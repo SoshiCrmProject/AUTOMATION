@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
-import axios from "axios";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import Link from "next/link";
+import api from "../lib/apiClient";
 
 export default function Signup() {
   const { t, i18n } = useTranslation("common");
@@ -41,7 +41,7 @@ export default function Signup() {
     }
     setLoading(true);
     try {
-      const res = await axios.post("/api/auth/signup", { email, password, locale: i18n.language || "en" });
+      const res = await api.post("/auth/signup", { email, password, locale: i18n.language || "en" });
       localStorage.setItem("token", res.data.token);
       window.location.href = "/dashboard";
     } catch (err: any) {

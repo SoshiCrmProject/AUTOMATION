@@ -1,9 +1,9 @@
 import { FormEvent, useEffect, useState } from "react";
-import axios from "axios";
 import { useTranslation } from "next-i18next";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import Link from "next/link";
+import api from "../lib/apiClient";
 
 export default function Login() {
   const { t } = useTranslation("common");
@@ -25,7 +25,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      const res = await axios.post("/api/auth/login", { email, password });
+      const res = await api.post("/auth/login", { email, password });
       if (remember) {
         localStorage.setItem("token", res.data.token);
         sessionStorage.removeItem("token");
