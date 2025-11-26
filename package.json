@@ -1,0 +1,32 @@
+{
+  "name": "shopee-amazon-autopurchase",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Shopee to Amazon auto-purchase and auto-shipping platform (English/Japanese bilingual)",
+  "workspaces": [
+    "apps/api",
+    "apps/web",
+    "apps/worker",
+    "packages/shared"
+  ],
+  "scripts": {
+    "dev:api": "cd apps/api && ts-node-dev --respawn --transpile-only src/index.ts",
+    "dev:web": "cd apps/web && next dev -p 3000",
+    "dev:worker": "cd apps/worker && ts-node-dev --respawn --transpile-only src/index.ts",
+    "lint": "eslint . --ext .ts,.tsx",
+    "typecheck": "tsc -b",
+    "prepare": "npx husky install",
+    "postinstall": "npm run build --workspace @shopee-amazon/shared"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "eslint": "^8.57.0",
+    "eslint-plugin-react": "^7.33.2",
+    "@typescript-eslint/eslint-plugin": "^6.21.0",
+    "@typescript-eslint/parser": "^6.21.0",
+    "@next/eslint-plugin-next": "^14.1.0",
+    "typescript": "^5.3.3",
+    "husky": "^9.0.10",
+    "ts-node-dev": "^2.0.0"
+  }
+}

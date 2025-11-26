@@ -1,0 +1,95 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:15
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shopee
+      POSTGRES_PASSWORD: shopee
+      POSTGRES_DB: shopee_amazon
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://shopee:shopee@postgres:5432/shopee_amazon
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change-me
+      AES_SECRET_KEY: 64-hex-key-for-aes-gcm
+      SHOPEE_PARTNER_ID: ""
+      SHOPEE_PARTNER_KEY: ""
+      SHOPEE_ACCESS_TOKEN: ""
+      SHOPEE_SHOP_ID: ""
+      SUPERADMIN_EMAIL: admin@example.com
+      SUPERADMIN_PASSWORD: change-me
+      AMAZON_SHIPPING_LABEL: "Shopee Warehouse"
+      ALERT_WEBHOOK_URL: ""
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+      - redis
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start"]
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgres://shopee:shopee@postgres:5432/shopee_amazon
+      REDIS_URL: redis://redis:6379
+      AES_SECRET_KEY: 64-hex-key-for-aes-gcm
+      SHOPEE_PARTNER_ID: ""
+      SHOPEE_PARTNER_KEY: ""
+      SHOPEE_ACCESS_TOKEN: ""
+      SHOPEE_SHOP_ID: ""
+      AMAZON_SHIPPING_LABEL: "Shopee Warehouse"
+      ALERT_WEBHOOK_URL: ""
+    depends_on:
+      - postgres
+      - redis
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    restart: unless-stopped
+    command: ["npm", "run", "start"]
+    environment:
+      NODE_ENV: production
+      NEXT_PUBLIC_API_URL: http://api:4000
+      NEXT_PUBLIC_MOCK_API: "0"
+    ports:
+      - "3000:3000"
+    depends_on:
+      - api
+
+  nginx:
+    image: nginx:1.25
+    restart: unless-stopped
+    volumes:
+      - ./infra/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - web
+      - api
+
+volumes:
+  pgdata:
