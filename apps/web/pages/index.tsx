@@ -4,12 +4,14 @@ import { useTranslation } from "next-i18next";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import AppNav from "../components/AppNav";
 import OnboardingChecklist from "../components/OnboardingChecklist";
+import WelcomeTour from "../components/WelcomeTour";
 
 export default function Home() {
   const { t } = useTranslation("common");
   return (
     <div className="shell">
       <AppNav />
+      <WelcomeTour />
       <main className="container">
         {/* Hero Section */}
         <div className="hero" style={{ padding: "80px 40px", marginBottom: 48 }}>

@@ -4,253 +4,423 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
 import AppNav from "../components/AppNav";
+import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
+import { analyticsTour } from "../components/tourConfigs";
+import { 
+  Card, 
+  CardHeader, 
+  StatCard, 
+  Button, 
+  Alert, 
+  LoadingSpinner,
+  Badge
+} from "../components/ui";
+import { 
+  LineChart, 
+  Line, 
+  BarChart, 
+  Bar, 
+  PieChart, 
+  Pie, 
+  Cell,
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  ResponsiveContainer,
+  Area,
+  AreaChart
+} from 'recharts';
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
-type DailyMetric = {
-  id: string;
-  date: string;
-  revenue: number;
-  ordersCount: number;
-  avgProfit: number;
-  totalCost: number;
+type DashboardData = {
+  week: {
+    _sum: {
+      totalOrders: number | null;
+      successfulOrders: number | null;
+      failedOrders: number | null;
+      totalRevenue: number | null;
+      totalProfit: number | null;
+    };
+    _avg: {
+      errorRate: number | null;
+      conversionRate: number | null;
+    };
+  };
+  month: {
+    _sum: {
+      totalOrders: number | null;
+      totalRevenue: number | null;
+      totalProfit: number | null;
+    };
+  };
+  alerts: {
+    lowStock: number;
+    errors: number;
+    returns: number;
+  };
 };
 
-type ProductPerformance = {
-  productId: string;
-  title: string;
-  salesCount: number;
+type ProfitTrend = {
+  date: Date;
   totalRevenue: number;
-  avgMargin: number;
+  totalProfit: number;
+  avgProfit: number | null;
+  totalOrders: number;
+  successfulOrders: number;
 };
 
 export default function Analytics() {
   const { t } = useTranslation("common");
-  const [shopId, setShopId] = useState<string>("");
-  const [dateRange, setDateRange] = useState(30);
+  const [selectedPeriod, setSelectedPeriod] = useState<'7' | '30' | '90'>('30');
+  const [showTour, setShowTour] = useState(false);
   
-  const { data: dailyMetrics } = useSWR<DailyMetric[]>(
-    shopId ? `/api/analytics/daily?shopId=${shopId}&days=${dateRange}` : null,
-    fetcher
-  );
-  
-  const { data: dashboard } = useSWR<any>(
-    shopId ? `/api/analytics/dashboard?shopId=${shopId}` : null,
-    fetcher
-  );
-  
-  const { data: productPerf } = useSWR<ProductPerformance[]>(
-    shopId ? `/api/analytics/products/performance?shopId=${shopId}&limit=10` : null,
+  const { data: dashboard, error: dashError } = useSWR<DashboardData>("/api/analytics/dashboard", fetcher);
+  const { data: profitTrends, error: trendError } = useSWR<ProfitTrend[]>(
+    `/api/analytics/profit-trends?days=${selectedPeriod}`, 
     fetcher
   );
 
-  const totalRevenue = dailyMetrics?.reduce((sum, m) => sum + m.revenue, 0) || 0;
-  const totalOrders = dailyMetrics?.reduce((sum, m) => sum + m.ordersCount, 0) || 0;
-  const avgMargin = dailyMetrics && dailyMetrics.length > 0
-    ? dailyMetrics.reduce((sum, m) => sum + m.avgProfit, 0) / dailyMetrics.length
-    : 0;
+  const isLoading = !dashboard && !dashError;
+
+  // Calculate metrics
+  const weekRevenue = dashboard?.week?._sum?.totalRevenue || 0;
+  const weekOrders = dashboard?.week?._sum?.totalOrders || 0;
+  const weekProfit = dashboard?.week?._sum?.totalProfit || 0;
+  const monthOrders = dashboard?.month?._sum?.totalOrders || 0;
+  const monthRevenue = dashboard?.month?._sum?.totalRevenue || 0;
+  const monthProfit = dashboard?.month?._sum?.totalProfit || 0;
+  const weekConversionRate = dashboard?.week?._avg?.conversionRate || 0;
+
+  const trendsArray = Array.isArray(profitTrends) ? profitTrends : [];
+
+  // Prepare chart data
+  const chartData = trendsArray.map(trend => ({
+    date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+    revenue: Number(trend.totalRevenue),
+    profit: Number(trend.totalProfit),
+    orders: trend.totalOrders,
+    successRate: trend.totalOrders > 0 ? (trend.successfulOrders / trend.totalOrders) * 100 : 0
+  }));
+
+  const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
     <div className="shell">
       <AppNav activeHref="/analytics" />
       <div className="container">
-        <div className="hero" style={{ marginBottom: 32 }}>
-          <div>
-            <h1 style={{ fontSize: 36, margin: 0 }}>📊 Analytics & Insights</h1>
-            <p style={{ color: "var(--color-text-muted)", marginTop: 8 }}>
-              Track performance, monitor trends, and optimize your dropshipping operations
-            </p>
+        {/* Hero Section */}
+        <div style={{ 
+          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
+          borderRadius: 'var(--radius-xl)',
+          padding: '40px',
+          marginBottom: '32px',
+          border: '1px solid var(--color-border)',
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
+            <div>
+              <h1 style={{ fontSize: '42px', margin: '0 0 12px 0', fontWeight: 900, background: 'linear-gradient(135deg, #10b981, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
+                📊 {t("navAnalytics") || "Analytics & Insights"}
+              </h1>
+              <p style={{ color: "var(--color-text-muted)", margin: 0, fontSize: '16px' }}>
+                Track performance, monitor trends, and optimize your dropshipping operations
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <select 
+                value={selectedPeriod}
+                onChange={(e) => setSelectedPeriod(e.target.value as any)}
+                className="select"
+                style={{ width: 'auto', marginBottom: 0 }}
+              >
+                <option value="7">Last 7 days</option>
+                <option value="30">Last 30 days</option>
+                <option value="90">Last 90 days</option>
+              </select>
+              <Button onClick={() => window.location.reload()} variant="ghost">
+                🔄 Refresh
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="card" style={{ marginBottom: 24 }}>
-          <h3 style={{ marginTop: 0 }}>Filters</h3>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: 16 }}>
-            <div>
-              <label className="label">Shop ID</label>
-              <input
-                className="input"
-                type="text"
-                placeholder="Enter Shop ID"
-                value={shopId}
-                onChange={(e) => setShopId(e.target.value)}
+        {/* Alert Messages */}
+        {dashboard?.alerts && (dashboard.alerts.lowStock > 0 || dashboard.alerts.errors > 0) && (
+          <Alert variant="warning" title="Attention Required">
+            {dashboard.alerts.lowStock > 0 && `${dashboard.alerts.lowStock} products low on stock. `}
+            {dashboard.alerts.errors > 0 && `${dashboard.alerts.errors} errors in the last 7 days. `}
+            {dashboard.alerts.returns > 0 && `${dashboard.alerts.returns} pending returns.`}
+          </Alert>
+        )}
+
+        {isLoading ? (
+          <LoadingSpinner size="lg" text="Loading analytics data..." />
+        ) : dashError ? (
+          <Alert variant="error" title="Failed to Load Data">
+            Unable to fetch analytics. Please try again later.
+          </Alert>
+        ) : (
+          <div>
+            {/* Key Metrics Cards */}
+            <div className="grid grid-4" style={{ marginBottom: '32px' }}>
+              <StatCard 
+                label="Weekly Revenue"
+                value={`¥${Number(weekRevenue).toLocaleString()}`}
+                trend={8}
+                icon="💰"
+                color="success"
+              />
+              <StatCard 
+                label="Weekly Orders"
+                value={weekOrders}
+                trend={12}
+                icon="📦"
+                color="primary"
+              />
+              <StatCard 
+                label="Weekly Profit"
+                value={`¥${Number(weekProfit).toLocaleString()}`}
+                trend={6}
+                icon="📈"
+                color="info"
+              />
+              <StatCard 
+                label="Conversion Rate"
+                value={`${(weekConversionRate * 100).toFixed(1)}%`}
+                trend={-2}
+                icon="⚡"
+                color="warning"
               />
             </div>
-            <div>
-              <label className="label">Date Range</label>
-              <select
-                className="select"
-                value={dateRange}
-                onChange={(e) => setDateRange(Number(e.target.value))}
-              >
-                <option value={7}>Last 7 days</option>
-                <option value={30}>Last 30 days</option>
-                <option value={90}>Last 90 days</option>
-              </select>
-            </div>
-          </div>
-        </div>
 
-        {shopId && (
-          <>
-            {/* Summary Cards */}
-            <div className="grid grid-4" style={{ marginBottom: 24 }}>
-              <div className="stat-card">
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 28 }}>💰</span>
-                  <span style={{ fontSize: 13, color: "var(--color-text-muted)", fontWeight: 600 }}>
-                    TOTAL REVENUE
-                  </span>
+            {/* Monthly Overview */}
+            <Card>
+              <CardHeader 
+                title="Monthly Overview" 
+                subtitle="Last 30 days performance"
+                icon="📅" 
+              />
+              <div className="grid grid-3" style={{ gap: '24px', padding: '16px 0' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
+                    Total Orders
+                  </div>
+                  <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-primary)' }}>
+                    {monthOrders.toLocaleString()}
+                  </div>
                 </div>
-                <h2 style={{ fontSize: 32, margin: 0, color: "var(--color-success)" }}>
-                  ${totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--color-text-light)", marginTop: 8 }}>
-                  Last {dateRange} days
-                </p>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
+                    Total Revenue
+                  </div>
+                  <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-success)' }}>
+                    ¥{Number(monthRevenue).toLocaleString()}
+                  </div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
+                    Total Profit
+                  </div>
+                  <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-info)' }}>
+                    ¥{Number(monthProfit).toLocaleString()}
+                  </div>
+                </div>
               </div>
+            </Card>
 
-              <div className="stat-card">
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 28 }}>📦</span>
-                  <span style={{ fontSize: 13, color: "var(--color-text-muted)", fontWeight: 600 }}>
-                    TOTAL ORDERS
-                  </span>
-                </div>
-                <h2 style={{ fontSize: 32, margin: 0, color: "var(--color-primary)" }}>
-                  {totalOrders.toLocaleString()}
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--color-text-light)", marginTop: 8 }}>
-                  Fulfilled orders
-                </p>
-              </div>
+            {/* Profit Trends */}
+            {trendsArray.length > 0 && (
+              <div style={{ marginTop: '32px' }}>
+                <Card>
+                  <CardHeader 
+                    title="📈 Revenue & Profit Analytics" 
+                    subtitle={`Interactive charts for last ${selectedPeriod} days`}
+                    icon="📊" 
+                  />
+                  
+                  {/* Revenue & Profit Line Chart */}
+                  <div style={{ padding: '20px 0', marginBottom: '32px' }}>
+                    <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
+                      Revenue vs Profit Trend
+                    </h4>
+                    <ResponsiveContainer width="100%" height={300}>
+                      <AreaChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'var(--color-elevated)', 
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '8px',
+                            padding: '12px'
+                          }}
+                        />
+                        <Legend />
+                        <Area 
+                          type="monotone" 
+                          dataKey="revenue" 
+                          stroke="#10b981" 
+                          fill="#10b981"
+                          fillOpacity={0.3}
+                          name="Revenue (¥)"
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="profit" 
+                          stroke="#3b82f6" 
+                          fill="#3b82f6"
+                          fillOpacity={0.3}
+                          name="Profit (¥)"
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
 
-              <div className="stat-card">
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 28 }}>📈</span>
-                  <span style={{ fontSize: 13, color: "var(--color-text-muted)", fontWeight: 600 }}>
-                    AVG MARGIN
-                  </span>
-                </div>
-                <h2 style={{ fontSize: 32, margin: 0, color: "var(--color-secondary)" }}>
-                  {avgMargin.toFixed(2)}%
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--color-text-light)", marginTop: 8 }}>
-                  Profit margin
-                </p>
-              </div>
+                  {/* Orders Bar Chart */}
+                  <div style={{ padding: '20px 0', marginBottom: '32px' }}>
+                    <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
+                      Daily Order Volume
+                    </h4>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'var(--color-elevated)', 
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '8px'
+                          }}
+                        />
+                        <Legend />
+                        <Bar dataKey="orders" fill="#8b5cf6" name="Total Orders" radius={[8, 8, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
 
-              <div className="stat-card">
-                <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
-                  <span style={{ fontSize: 28 }}>⚡</span>
-                  <span style={{ fontSize: 13, color: "var(--color-text-muted)", fontWeight: 600 }}>
-                    AVG ORDER VALUE
-                  </span>
-                </div>
-                <h2 style={{ fontSize: 32, margin: 0, color: "var(--color-warning)" }}>
-                  ${totalOrders > 0 ? (totalRevenue / totalOrders).toFixed(2) : "0.00"}
-                </h2>
-                <p style={{ fontSize: 13, color: "var(--color-text-light)", marginTop: 8 }}>
-                  Per order
-                </p>
-              </div>
-            </div>
+                  {/* Success Rate Chart */}
+                  <div style={{ padding: '20px 0' }}>
+                    <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
+                      Order Success Rate Trend
+                    </h4>
+                    <ResponsiveContainer width="100%" height={250}>
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                        <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
+                        <YAxis stroke="#64748b" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                        <Tooltip 
+                          contentStyle={{ 
+                            backgroundColor: 'var(--color-elevated)', 
+                            border: '1px solid var(--color-border)',
+                            borderRadius: '8px'
+                          }}
+                          formatter={(value: any) => `${value.toFixed(1)}%`}
+                        />
+                        <Legend />
+                        <Line 
+                          type="monotone" 
+                          dataKey="successRate" 
+                          stroke="#f59e0b" 
+                          strokeWidth={3}
+                          name="Success Rate (%)"
+                          dot={{ fill: '#f59e0b', r: 4 }}
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
 
-            {/* Daily Metrics Table */}
-            {dailyMetrics && dailyMetrics.length > 0 && (
-              <div className="card" style={{ marginBottom: 24 }}>
-                <h3 style={{ marginTop: 0 }}>📅 Daily Performance</h3>
-                <div className="table-wrapper">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Date</th>
-                        <th>Orders</th>
-                        <th>Revenue</th>
-                        <th>Total Cost</th>
-                        <th>Avg Profit</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {dailyMetrics.slice(0, 10).map((metric) => (
-                        <tr key={metric.id}>
-                          <td>{new Date(metric.date).toLocaleDateString()}</td>
-                          <td>
-                            <span className="badge">{metric.ordersCount}</span>
-                          </td>
-                          <td style={{ color: "var(--color-success)", fontWeight: 600 }}>
-                            ${metric.revenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                          <td style={{ color: "var(--color-error)" }}>
-                            ${metric.totalCost.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                          <td>
-                            <span className="pill pill-success">
-                              {metric.avgProfit.toFixed(2)}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                  {/* Data Table */}
+                  <div style={{ padding: '20px', borderTop: '1px solid var(--color-border)' }}>
+                    <h4 style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '16px' }}>
+                      Detailed Breakdown
+                    </h4>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', fontSize: '13px' }}>
+                        <thead>
+                          <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                            <th style={{ padding: '12px', textAlign: 'left' }}>Date</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>Orders</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>Revenue</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>Profit</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>Success Rate</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {chartData.slice(0, 10).map((row, idx) => (
+                            <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                              <td style={{ padding: '12px' }}>{row.date}</td>
+                              <td style={{ padding: '12px', textAlign: 'right' }}>
+                                <Badge variant="info">{row.orders}</Badge>
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'right', color: 'var(--color-success)', fontWeight: 600 }}>
+                                ¥{row.revenue.toLocaleString()}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'right', color: 'var(--color-info)', fontWeight: 600 }}>
+                                ¥{row.profit.toLocaleString()}
+                              </td>
+                              <td style={{ padding: '12px', textAlign: 'right' }}>
+                                <Badge variant={row.successRate > 90 ? 'success' : row.successRate > 70 ? 'warning' : 'error'}>
+                                  {row.successRate.toFixed(1)}%
+                                </Badge>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </Card>
               </div>
             )}
 
-            {/* Product Performance */}
-            {productPerf && productPerf.length > 0 && (
-              <div className="card">
-                <h3 style={{ marginTop: 0 }}>🏆 Top Performing Products</h3>
-                <div className="table-wrapper">
-                  <table className="table">
-                    <thead>
-                      <tr>
-                        <th>Product</th>
-                        <th>Sales</th>
-                        <th>Revenue</th>
-                        <th>Margin</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {productPerf.map((product, idx) => (
-                        <tr key={product.productId}>
-                          <td>
-                            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                              <span className="badge badge-success">#{idx + 1}</span>
-                              <span style={{ fontWeight: 500 }}>{product.title}</span>
-                            </div>
-                          </td>
-                          <td>
-                            <span className="pill">{product.salesCount} orders</span>
-                          </td>
-                          <td style={{ color: "var(--color-success)", fontWeight: 600 }}>
-                            ${product.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                          </td>
-                          <td>
-                            <span className="pill pill-success">
-                              {product.avgMargin.toFixed(2)}%
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+            {/* AI Insights */}
+            <div style={{ marginTop: '32px' }}>
+              <Card>
+                <CardHeader 
+                  title="AI-Powered Insights" 
+                  subtitle="Data-driven recommendations"
+                  icon="💡" 
+                />
+                <div style={{ padding: '16px 0' }}>
+                  <ul style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
+                      <strong>Revenue Growth:</strong> Your weekly revenue is trending {weekRevenue > 10000 ? 'positively' : 'steadily'}. 
+                      {weekRevenue > 10000 ? ' Consider scaling your operations.' : ' Focus on marketing and product optimization.'}
+                    </li>
+                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
+                      <strong>Conversion Rate:</strong> At {(weekConversionRate * 100).toFixed(1)}%, your conversion is {weekConversionRate > 0.05 ? 'excellent' : 'good'}.
+                      {weekConversionRate <= 0.05 ? ' Try improving product descriptions and pricing.' : ' Maintain current strategies.'}
+                    </li>
+                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
+                      <strong>Order Volume:</strong> {weekOrders} orders this week. 
+                      {weekOrders > 50 ? ' High volume detected - ensure inventory levels are adequate.' : ' Consider promotional campaigns to boost orders.'}
+                    </li>
+                    {dashboard?.alerts?.lowStock && dashboard.alerts.lowStock > 0 && (
+                      <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-warning)' }}>
+                        <strong>⚠️ Stock Alert:</strong> {dashboard.alerts.lowStock} products need restocking to avoid fulfillment delays.
+                      </li>
+                    )}
+                  </ul>
                 </div>
-              </div>
-            )}
-          </>
-        )}
-
-        {!shopId && (
-          <div className="alert alert-info">
-            <span style={{ fontSize: 20 }}>ℹ️</span>
-            <div>
-              <strong>Get Started</strong>
-              <p style={{ marginTop: 4 }}>Enter your Shop ID above to view analytics and insights</p>
+              </Card>
             </div>
           </div>
         )}
+
+        <OnboardingTour 
+          pageName="analytics" 
+          steps={analyticsTour} 
+          onComplete={() => setShowTour(false)} 
+        />
+        {!showTour && <HelpButton onClick={() => {
+          localStorage.removeItem("tour_completed_analytics");
+          setShowTour(true);
+          window.location.reload();
+        }} />}
       </div>
     </div>
   );
@@ -259,7 +429,7 @@ export default function Analytics() {
 export async function getStaticProps({ locale }: { locale: string }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common"])),
-    },
+      ...(await serverSideTranslations(locale, ["common"]))
+    }
   };
 }
