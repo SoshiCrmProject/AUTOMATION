@@ -25,6 +25,10 @@ import returnsRoutes from "./routes/returns";
 dotenv.config();
 
 const app = express();
+
+// Trust proxy for Vercel deployment (X-Forwarded-For headers)
+app.set('trust proxy', 1);
+
 app.use(cors());
 app.use(helmet());
 app.use(express.json());
@@ -126,6 +130,18 @@ async function ensureSuperAdmin() {
   }
 }
 ensureSuperAdmin().catch((err) => console.error("Superadmin bootstrap failed", err));
+
+// Root route for testing
+app.get("/", (_req, res) => res.json({ 
+  status: "ok", 
+  message: "Shopee-Amazon Automation API",
+  version: "1.0.0",
+  endpoints: {
+    health: "/health",
+    auth: "/auth/login, /auth/signup",
+    api: "/api/*"
+  }
+}));
 
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 
@@ -685,6 +701,11 @@ app.use("/api/pricing", authMiddleware, pricingRoutes);
 app.use("/api/notifications", authMiddleware, notificationRoutes);
 app.use("/api/crm", authMiddleware, crmRoutes);
 app.use("/api/returns", authMiddleware, returnsRoutes);
+
+// 404 handler
+app.use((_req, res) => {
+  res.status(404).json({ error: "Not Found" });
+});
 
 // Global error handler
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
