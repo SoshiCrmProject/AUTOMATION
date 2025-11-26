@@ -11,6 +11,7 @@ import { Input } from "../components/ui/Input";
 import { Alert } from "../components/ui/Utility";
 import { Badge } from "../components/ui/Badge";
 import Toast, { pushToast } from "../components/Toast";
+import CredentialSetupGuide from "../components/CredentialSetupGuide";
 import api from "../lib/apiClient";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
@@ -488,6 +489,9 @@ export default function SettingsPage() {
                 🔑 Save Shopee Credentials (Encrypted)
               </Button>
               
+              {/* Credential Setup Guide */}
+              <CredentialSetupGuide platform="shopee" />
+              
               {/* Test Connection */}
               {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
                 <div style={{ marginTop: 16 }}>
@@ -509,30 +513,44 @@ export default function SettingsPage() {
           {/* Amazon Tab */}
           {activeTab === "amazon" && (
             <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Amazon Seller Credentials</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 16 }}>📦 Amazon Seller Credentials</h3>
               <div style={{ marginBottom: 24 }}>
-                <Alert variant="warning">
-                  These credentials are used for automated browser login to Amazon Seller Central
+                <Alert variant="warning" title="🔒 Security Notice">
+                  These credentials are encrypted (AES-256-GCM) and used only for automated browser login.
+                  Never shared with third parties.
+                </Alert>
+              </div>
+              
+              <div style={{ marginBottom: 16 }}>
+                <Alert variant="info" title="ℹ️ What This Does">
+                  Our system uses Playwright to automate Amazon purchases. We need your login to:
+                  <ul style={{ margin: "8px 0", paddingLeft: 20 }}>
+                    <li>Check product availability and prices</li>
+                    <li>Add items to cart automatically</li>
+                    <li>Complete checkout with your saved payment method</li>
+                  </ul>
                 </Alert>
               </div>
               
               <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
                 <Input
-                  label="Amazon Email"
+                  label="Amazon Email 📧"
                   type="email"
                   value={amazonEmail}
                   onChange={(e) => setAmazonEmail(e.target.value)}
                   placeholder="your-email@example.com"
+                  hint="The email you use to log in to Amazon"
                 />
                 <Input
-                  label="Amazon Password"
+                  label="Amazon Password 🔑"
                   type="password"
                   value={amazonPassword}
                   onChange={(e) => setAmazonPassword(e.target.value)}
                   placeholder="••••••••"
+                  hint="Your Amazon account password (stored encrypted)"
                 />
                 <Input
-                  label="Shipping Label"
+                  label="Shipping Label 🏷️"
                   value={amazonShippingLabel}
                   onChange={(e) => setAmazonShippingLabel(e.target.value)}
                   placeholder="Shopee Warehouse"
@@ -541,8 +559,11 @@ export default function SettingsPage() {
               </div>
 
               <Button onClick={handleSaveAmazonCredentials} variant="primary" fullWidth disabled={loading}>
-                🔑 Save Amazon Credentials
+                🔑 Save Amazon Credentials (Encrypted)
               </Button>
+              
+              {/* Amazon Credential Setup Guide */}
+              <CredentialSetupGuide platform="amazon" />
             </div>
           )}
 

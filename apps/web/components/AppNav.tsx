@@ -1,5 +1,5 @@
 import Link from "next/link";
-import LanguageSwitcher from "./LanguageSwitcher";
+import LanguageSelector from "./LanguageSelector";
 import { useTranslation } from "next-i18next";
 import { useEffect, useState } from "react";
 
@@ -96,7 +96,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
             </Link>
           </>
         )}
-        <LanguageSwitcher />
+        <LanguageSelector />
       </div>
     </header>
   );
