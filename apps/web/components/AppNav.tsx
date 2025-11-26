@@ -20,6 +20,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
     { href: "/inventory", label: "Inventory", icon: "📦" },
     { href: "/crm", label: "CRM", icon: "👥" },
     { href: "/orders", label: t("navOrders"), icon: "🛒" },
+    { href: "/calculator", label: "Calculator", icon: "💰" },
     { href: "/settings", label: t("navSettings"), icon: "⚙️" },
     { href: "/errors", label: t("navErrors"), icon: "⚠️" },
     { href: "/review", label: t("navReview"), icon: "✅" },

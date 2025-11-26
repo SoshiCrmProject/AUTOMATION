@@ -50,7 +50,7 @@ export default function ReviewPage() {
   const [processNotes, setProcessNotes] = useState<string>("");
   
   const { data: manualReviewData, error: reviewError, mutate: refreshReview } = useSWR<ManualReviewItem[]>(
-    "/api/orders/errors",
+    "/orders/errors",
     fetcher,
     { revalidateOnFocus: false }
   );
@@ -72,7 +72,7 @@ export default function ReviewPage() {
   const retry = async (orderId: string) => {
     setLoadingId(orderId);
     try {
-      await api.post(`/api/orders/retry/${orderId}`);
+      await api.post(`/orders/retry/${orderId}`);
       pushToast("Order retry successful", "success");
       refreshReview();
     } catch (e: any) {

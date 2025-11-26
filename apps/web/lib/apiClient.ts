@@ -22,18 +22,24 @@ api.interceptors.request.use((config) => {
     '/api/settings',
     '/api/credentials/',
     '/api/shops',
-    '/api/orders/',
     '/api/admin/',
     '/api/ops/',
     '/api/auth/',
     '/api/mappings',
-    '/api/products/'
+    '/api/products/',
+    '/api/profit/'
   ];
   
-  for (const route of routesWithoutApiPrefix) {
-    if (url.startsWith(route)) {
-      config.url = url.replace('/api', '');
-      break;
+  // Special handling for /orders - some are at root, some might be elsewhere
+  // /orders/errors/export, /orders/processed/export, /orders/recent, /orders/[id], /orders/poll-now, /orders/retry/*, /orders/manual/*
+  if (url.startsWith('/api/orders/')) {
+    config.url = url.replace('/api', '');
+  } else {
+    for (const route of routesWithoutApiPrefix) {
+      if (url.startsWith(route)) {
+        config.url = url.replace('/api', '');
+        break;
+      }
     }
   }
   
