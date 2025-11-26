@@ -937,5 +937,20 @@
   "hangouts": "Google Hangouts",
   "messenger": "Messenger",
   "viber": "Viber",
-  "signal": "Signal"
+  "signal": "Signal",
+  "enterpriseFeaturesTitle": "エンタープライズ機能",
+  "featureAnalyticsTitle": "分析ダッシュボード",
+  "featureAnalyticsDesc": "リアルタイムの洞察と予測でパフォーマンスを追跡",
+  "featureInventoryTitle": "在庫管理",
+  "featureInventoryDesc": "在庫レベルを監視し、再注文を自動化",
+  "featureCRMTitle": "CRMシステム",
+  "featureCRMDesc": "ロイヤルティ階層で顧客関係を構築",
+  "featureNotificationsTitle": "マルチチャネル通知",
+  "featureNotificationsDesc": "メール、SMS、Slack、Discord、Webhookアラート",
+  "featurePricingTitle": "ダイナミックプライシング",
+  "featurePricingDesc": "競合マッチングによる自動価格戦略",
+  "featureReturnsTitle": "返品管理",
+  "featureReturnsDesc": "効率的なRMAおよび返金処理",
+  "analyticsLinkText": "分析",
+  "helpButtonTitle": "ヘルプを表示"
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "next-i18next";
 import { Modal } from "./ui";
 
 type TourStep = {
@@ -219,6 +220,7 @@ export default function OnboardingTour({ pageName, steps, onComplete }: Onboardi
 
 // Helper component for reopening tours
 export function HelpButton({ onClick }: { onClick: () => void }) {
+  const { t } = useTranslation("common");
   return (
     <button
       onClick={onClick}
@@ -246,7 +248,7 @@ export function HelpButton({ onClick }: { onClick: () => void }) {
         e.currentTarget.style.transform = "scale(1)";
         e.currentTarget.style.boxShadow = "0 8px 24px rgba(37, 99, 235, 0.4)";
       }}
-      title="Show Help"
+      title={t("helpButtonTitle")}
     >
       ?
     </button>

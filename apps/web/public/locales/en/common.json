@@ -937,5 +937,20 @@
   "hangouts": "Google Hangouts",
   "messenger": "Messenger",
   "viber": "Viber",
-  "signal": "Signal"
+  "signal": "Signal",
+  "enterpriseFeaturesTitle": "Enterprise Features",
+  "featureAnalyticsTitle": "Analytics Dashboard",
+  "featureAnalyticsDesc": "Track performance with real-time insights and forecasting",
+  "featureInventoryTitle": "Inventory Management",
+  "featureInventoryDesc": "Monitor stock levels and automate reordering",
+  "featureCRMTitle": "CRM System",
+  "featureCRMDesc": "Build customer relationships with loyalty tiers",
+  "featureNotificationsTitle": "Multi-Channel Notifications",
+  "featureNotificationsDesc": "Email, SMS, Slack, Discord, and Webhook alerts",
+  "featurePricingTitle": "Dynamic Pricing",
+  "featurePricingDesc": "Automated pricing strategies with competitor matching",
+  "featureReturnsTitle": "Returns Management",
+  "featureReturnsDesc": "Streamlined RMA and refund processing",
+  "analyticsLinkText": "Analytics",
+  "helpButtonTitle": "Show Help"
 }

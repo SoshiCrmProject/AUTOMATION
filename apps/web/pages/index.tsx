@@ -56,18 +56,18 @@ export default function Home() {
         {/* Features Grid */}
         <section style={{ marginBottom: 48 }}>
           <h2 style={{ textAlign: "center", fontSize: 36, marginBottom: 32 }}>
-            ✨ Enterprise Features
+            ✨ {t("enterpriseFeaturesTitle")}
           </h2>
           <div className="grid grid-3">
             <FeatureCard icon="🤖" title={t("autoShipping")} desc={t("featureAutoBuy")} />
             <FeatureCard icon="💰" title={t("includePoints")} desc={t("featureProfit")} />
             <FeatureCard icon="🔧" title={t("ops")} desc={t("featureOps")} />
-            <FeatureCard icon="📊" title="Analytics Dashboard" desc="Track performance with real-time insights and forecasting" />
-            <FeatureCard icon="📦" title="Inventory Management" desc="Monitor stock levels and automate reordering" />
-            <FeatureCard icon="👥" title="CRM System" desc="Build customer relationships with loyalty tiers" />
-            <FeatureCard icon="🔔" title="Multi-Channel Notifications" desc="Email, SMS, Slack, Discord, and Webhook alerts" />
-            <FeatureCard icon="💸" title="Dynamic Pricing" desc="Automated pricing strategies with competitor matching" />
-            <FeatureCard icon="↩️" title="Returns Management" desc="Streamlined RMA and refund processing" />
+            <FeatureCard icon="📊" title={t("featureAnalyticsTitle")} desc={t("featureAnalyticsDesc")} />
+            <FeatureCard icon="📦" title={t("featureInventoryTitle")} desc={t("featureInventoryDesc")} />
+            <FeatureCard icon="👥" title={t("featureCRMTitle")} desc={t("featureCRMDesc")} />
+            <FeatureCard icon="🔔" title={t("featureNotificationsTitle")} desc={t("featureNotificationsDesc")} />
+            <FeatureCard icon="💸" title={t("featurePricingTitle")} desc={t("featurePricingDesc")} />
+            <FeatureCard icon="↩️" title={t("featureReturnsTitle")} desc={t("featureReturnsDesc")} />
           </div>
         </section>
 
@@ -84,7 +84,7 @@ export default function Home() {
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginTop: 24, justifyContent: "center" }}>
             <Link className="btn" href="/ops">{t("opsCenter")}</Link>
             <Link className="btn btn-ghost" href="/orders">{t("navOrders")}</Link>
-            <Link className="btn btn-ghost" href="/analytics">📊 Analytics</Link>
+            <Link className="btn btn-ghost" href="/analytics">📊 {t("analyticsLinkText")}</Link>
           </div>
         </section>
 

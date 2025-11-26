@@ -5,8 +5,8 @@
   "devFiles": [],
   "ampDevFiles": [],
   "lowPriorityFiles": [
-    "static/0p6LaKDdqXpjoKg11Ms3p/_buildManifest.js",
-    "static/0p6LaKDdqXpjoKg11Ms3p/_ssgManifest.js"
+    "static/UFVGbMDi5XkJrIh30QIor/_buildManifest.js",
+    "static/UFVGbMDi5XkJrIh30QIor/_ssgManifest.js"
   ],
   "rootMainFiles": [],
   "pages": {
@@ -19,7 +19,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/pages/index-ce93467b76608cbd.js"
+      "static/chunks/pages/index-bd6cfc593e3ec07f.js"
     ],
     "/_app": [
       "static/chunks/webpack-fcc7eb8ce0c907a2.js",
@@ -62,7 +62,7 @@
       "static/chunks/876-95bb3161309320e8.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/analytics-3e2e61e987e9795c.js"
     ],
     "/calculator": [
@@ -84,7 +84,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/crm-54fcc15bbf0c4747.js"
     ],
     "/dashboard": [
@@ -96,7 +96,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/dashboard-f94fa79ffddc0159.js"
     ],
     "/errors": [
@@ -118,7 +118,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/inventory-8b9bce6ccd04be4a.js"
     ],
     "/login": [
@@ -167,7 +167,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/orders-c2ba27d40ffe08bd.js"
     ],
     "/orders/[id]": [
@@ -210,7 +210,7 @@
       "static/chunks/525-8b38aa2e11f54325.js",
       "static/chunks/211-e3f6bcf15097c3d2.js",
       "static/chunks/202-b2a721ecc0d6069d.js",
-      "static/chunks/438-39aa730ee1b6075b.js",
+      "static/chunks/438-956a956dc15694cf.js",
       "static/chunks/pages/settings-2282d6a79b296ab6.js"
     ],
     "/signup": [
