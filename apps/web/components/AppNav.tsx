@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 export default function AppNav({ activeHref }: { activeHref?: string }) {
   const { t } = useTranslation("common");
   const [hasToken, setHasToken] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
   useEffect(() => {
     if (typeof window !== "undefined") {
       const tok = localStorage.getItem("token") || sessionStorage.getItem("token");
@@ -29,6 +31,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
     { href: "/mappings", label: t("navMappings"), icon: "🔗" },
     { href: "/admin/users", label: t("navAdmin"), icon: "👤" }
   ];
+  
   return (
     <header className="nav">
       <div style={{ 
@@ -41,11 +44,22 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
       }}>
         🚀 AutoShip X
       </div>
-      <div className="nav-links">
+      
+      {/* Mobile Menu Toggle */}
+      <button 
+        className="mobile-menu-toggle"
+        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+        aria-label="Toggle menu"
+      >
+        {mobileMenuOpen ? "✕" : "☰"}
+      </button>
+      
+      <div className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""}`}>
         {links.map((l) => (
           <Link
             key={l.href}
             href={l.href}
+            onClick={() => setMobileMenuOpen(false)}
             style={{
               fontWeight: l.href === activeHref ? 700 : 500,
               color: l.href === activeHref ? "var(--color-text)" : "var(--color-text-muted)",
@@ -64,6 +78,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
             <Link 
               href="/login" 
               className="btn btn-ghost"
+              onClick={() => setMobileMenuOpen(false)}
               style={{ 
                 fontWeight: activeHref === "/login" ? 700 : 500,
                 marginLeft: 8
@@ -74,6 +89,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
             <Link 
               href="/signup" 
               className="btn"
+              onClick={() => setMobileMenuOpen(false)}
               style={{ fontWeight: activeHref === "/signup" ? 700 : 500 }}
             >
               {t("signup")}

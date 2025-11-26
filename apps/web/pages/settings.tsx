@@ -435,38 +435,74 @@ export default function SettingsPage() {
           {/* Shopee Tab */}
           {activeTab === "shopee" && (
             <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Shopee API Credentials</h3>
+              <h3 style={{ marginTop: 0, marginBottom: 16 }}>🛍️ Shopee API Credentials</h3>
+              
+              {/* Help Instructions */}
               <div style={{ marginBottom: 24 }}>
-                <Alert variant="warning">
-                  Get your Shopee Partner credentials from the Shopee Open Platform
+                <Alert variant="info" title="📚 How to Get Shopee Credentials">
+                  <ol style={{ margin: "8px 0", paddingLeft: 20, lineHeight: 1.8 }}>
+                    <li>Go to <strong>https://open.shopee.com/</strong></li>
+                    <li>Register and create a new app</li>
+                    <li>Get Partner ID and Partner Key from app settings</li>
+                    <li>Get Shop ID from your seller center</li>
+                    <li>See <strong>SHOPEE_CREDENTIALS_GUIDE.md</strong> for detailed steps</li>
+                  </ol>
                 </Alert>
               </div>
               
               <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
                 <Input
-                  label="Partner ID"
+                  label="Partner ID 🔢"
                   value={shopeePartnerId}
                   onChange={(e) => setShopeePartnerId(e.target.value)}
-                  placeholder="Enter Shopee Partner ID"
+                  placeholder="Enter numeric Partner ID (e.g., 1234567)"
+                  hint="Find this in your Shopee Open Platform app settings"
                 />
                 <Input
-                  label="Partner Key"
+                  label="Partner Key 🔐"
                   type="password"
                   value={shopeePartnerKey}
                   onChange={(e) => setShopeePartnerKey(e.target.value)}
-                  placeholder="Enter Shopee Partner Key"
+                  placeholder="Enter Partner Key (secret)"
+                  hint="Keep this secret! Used for signing API requests"
                 />
                 <Input
-                  label="Shop ID"
+                  label="Shop ID 🏪"
                   value={shopeeShopId}
                   onChange={(e) => setShopeeShopId(e.target.value)}
-                  placeholder="Enter Shop ID"
+                  placeholder="Enter numeric Shop ID (e.g., 987654)"
+                  hint="Get from your Shopee seller center URL or API"
                 />
               </div>
 
+              {/* Validation Status */}
+              {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
+                <div style={{ marginBottom: 16 }}>
+                  <Alert variant="success" title="✅ All fields filled">
+                    Ready to save. Click the button below to securely store your credentials.
+                  </Alert>
+                </div>
+              )}
+
               <Button onClick={handleSaveShopeeCredentials} variant="primary" fullWidth disabled={loading}>
-                🔑 Save Shopee Credentials
+                🔑 Save Shopee Credentials (Encrypted)
               </Button>
+              
+              {/* Test Connection */}
+              {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
+                <div style={{ marginTop: 16 }}>
+                  <Button onClick={async () => {
+                    try {
+                      await api.post("/orders/poll-now");
+                      pushToast("✅ Test poll initiated! Check Orders page for results.", "success");
+                    } catch (e: any) {
+                      pushToast("Test failed: " + (e.response?.data?.error || "Unknown error"), "error");
+                    }
+                  }} variant="ghost" fullWidth>
+                    🧪 Test Connection
+                  </Button>
+                </div>
+              )}
             </div>
           )}
 
