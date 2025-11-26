@@ -1,1 +1,1 @@
-self.__REACT_LOADABLE_MANIFEST='{"_app.tsx -> ../components/OnboardingModal":{"id":8272,"files":["static/chunks/418-0c42060c6d2b406c.js","static/chunks/723.4e25f1c0ae718883.js"]}}';
+self.__REACT_LOADABLE_MANIFEST='{"_app.tsx -> ../components/OnboardingModal":{"id":8272,"files":["static/chunks/418-0c42060c6d2b406c.js","static/chunks/723.b03f5d74b50f5342.js"]}}';

@@ -13,6 +13,30 @@ api.interceptors.request.use((config) => {
       config.headers.Authorization = `Bearer ${token}`;
     }
   }
+  
+  // Strip /api prefix for routes that are NOT mounted under /api on backend
+  // Backend has these routes at ROOT level: /settings, /credentials/*, /shops, /orders/*, /admin/*, /ops/*, /auth/*
+  // Backend has these routes under /api: /api/inventory, /api/analytics, /api/pricing, /api/notifications, /api/crm, /api/returns
+  const url = config.url || '';
+  const routesWithoutApiPrefix = [
+    '/api/settings',
+    '/api/credentials/',
+    '/api/shops',
+    '/api/orders/',
+    '/api/admin/',
+    '/api/ops/',
+    '/api/auth/',
+    '/api/mappings',
+    '/api/products/'
+  ];
+  
+  for (const route of routesWithoutApiPrefix) {
+    if (url.startsWith(route)) {
+      config.url = url.replace('/api', '');
+      break;
+    }
+  }
+  
   return config;
 });
 
