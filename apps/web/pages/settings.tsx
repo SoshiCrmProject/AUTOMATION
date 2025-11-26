@@ -43,6 +43,8 @@ export default function SettingsPage() {
   const [reviewBandPercent, setReviewBandPercent] = useState(0);
   const [isActive, setIsActive] = useState(false);
   const [isDryRun, setIsDryRun] = useState(false);
+  const [shopId, setShopId] = useState<string>("");
+  const [autoFulfillmentMode, setAutoFulfillmentMode] = useState<string>("AUTO");
   
   // Shopee/Amazon credentials
   const [shopeePartnerId, setShopeePartnerId] = useState("");
@@ -68,36 +70,126 @@ export default function SettingsPage() {
     }
   );
 
+  const { data: shops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
+  const { data: shopeeCredentials } = useSWR("/credentials/shopee", fetcher, { shouldRetryOnError: false });
+  const { data: amazonCredentials } = useSWR("/credentials/amazon", fetcher, { shouldRetryOnError: false });
+
   useEffect(() => {
     if (settings) {
       setIncludeAmazonPoints(settings.includeAmazonPoints);
       setIncludeDomesticShipping(settings.includeDomesticShipping);
-      setDomesticShippingCost(settings.domesticShippingCost);
+      setDomesticShippingCost(settings.domesticShippingCost || 0);
       setMaxShippingDays(settings.maxShippingDays);
       setMinExpectedProfit(settings.minExpectedProfit);
-      setReviewBandPercent(settings.reviewBandPercent);
+      setReviewBandPercent(settings.reviewBandPercent || 0);
       setIsActive(settings.isActive);
       setIsDryRun(settings.isDryRun);
+      // Set shopId from first shop in settings
+      if (settings.shopIds && settings.shopIds.length > 0) {
+        setShopId(settings.shopIds[0]);
+      }
     }
   }, [settings]);
 
+  useEffect(() => {
+    if (shops && shops.length > 0 && !shopId) {
+      setShopId(shops[0].id);
+    }
+  }, [shops, shopId]);
+
+  useEffect(() => {
+    if (shopeeCredentials && shopeeCredentials.length > 0) {
+      const cred = shopeeCredentials[0];
+      setShopeePartnerId(cred.partnerId || "");
+      setShopeeShopId(cred.shopId || "");
+    }
+  }, [shopeeCredentials]);
+
+  useEffect(() => {
+    if (amazonCredentials && amazonCredentials.length > 0) {
+      const cred = amazonCredentials[0];
+      setAmazonEmail(cred.email || "");
+      setAmazonShippingLabel("Shopee Warehouse");
+    }
+  }, [amazonCredentials]);
+
   const handleSaveSettings = async () => {
+    if (!shopId) {
+      pushToast("No shop selected. Please refresh the page.", "error");
+      return;
+    }
     setLoading(true);
     try {
       await api.post("/settings", {
-        includeAmazonPoints,
-        includeDomesticShipping,
-        domesticShippingCost,
-        maxShippingDays,
-        minExpectedProfit,
-        reviewBandPercent,
+        shopId,
         isActive,
         isDryRun,
+        autoFulfillmentMode,
+        minExpectedProfit,
+        maxShippingDays,
+        reviewBandPercent,
+        includePoints: includeAmazonPoints,
+        includeDomesticShipping,
+        defaultShippingAddressLabel: amazonShippingLabel || "Shopee Warehouse",
+        currency: "JPY"
       });
       pushToast("Settings saved successfully", "success");
       refreshSettings();
     } catch (error: any) {
       pushToast(error.response?.data?.error || "Failed to save settings", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveShopeeCredentials = async () => {
+    if (!shopId) {
+      pushToast("No shop selected", "error");
+      return;
+    }
+    if (!shopeePartnerId || !shopeePartnerKey || !shopeeShopId) {
+      pushToast("Please fill in all Shopee credentials", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.post("/credentials/shopee", {
+        partnerId: shopeePartnerId,
+        partnerKey: shopeePartnerKey,
+        accessToken: "",
+        baseUrl: "https://partner.shopeemobile.com",
+        shopId: shopId,
+        shopName: shopeeShopId,
+        shopeeRegion: "TH"
+      });
+      pushToast("Shopee credentials saved successfully", "success");
+    } catch (error: any) {
+      pushToast(error.response?.data?.error || "Failed to save Shopee credentials", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveAmazonCredentials = async () => {
+    if (!shopId) {
+      pushToast("No shop selected", "error");
+      return;
+    }
+    if (!amazonEmail || !amazonPassword) {
+      pushToast("Please fill in email and password", "error");
+      return;
+    }
+    setLoading(true);
+    try {
+      await api.post("/credentials/amazon", {
+        shopId,
+        email: amazonEmail,
+        password: amazonPassword
+      });
+      pushToast("Amazon credentials saved successfully", "success");
+      setAmazonPassword(""); // Clear password after save
+    } catch (error: any) {
+      pushToast(error.response?.data?.error || "Failed to save Amazon credentials", "error");
     } finally {
       setLoading(false);
     }
@@ -180,7 +272,7 @@ export default function SettingsPage() {
                   Min Expected Profit
                 </div>
                 <div style={{ fontSize: 20, fontWeight: 700, color: "var(--color-success)" }}>
-                  ${minExpectedProfit.toFixed(2)}
+                  ${(minExpectedProfit || 0).toFixed(2)}
                 </div>
               </div>
             </Card>
@@ -372,7 +464,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <Button variant="primary" fullWidth disabled={loading}>
+              <Button onClick={handleSaveShopeeCredentials} variant="primary" fullWidth disabled={loading}>
                 🔑 Save Shopee Credentials
               </Button>
             </div>
@@ -412,7 +504,7 @@ export default function SettingsPage() {
                 />
               </div>
 
-              <Button variant="primary" fullWidth disabled={loading}>
+              <Button onClick={handleSaveAmazonCredentials} variant="primary" fullWidth disabled={loading}>
                 🔑 Save Amazon Credentials
               </Button>
             </div>
