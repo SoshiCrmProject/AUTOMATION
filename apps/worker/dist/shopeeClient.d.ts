@@ -17,6 +17,6 @@ export type ShopeeOrder = {
     buyer_username: string;
     recipient_address: Record<string, unknown>;
 };
-export declare function fetchNewOrders(cfg: ShopeeConfig): Promise<ShopeeOrder[]>;
+export declare function fetchNewOrders(cfg: ShopeeConfig, lastPolledAt?: Date): Promise<ShopeeOrder[]>;
 export declare function fetchOrderDetail(cfg: ShopeeConfig, orderSn: string): Promise<ShopeeOrder | null>;
 export {};

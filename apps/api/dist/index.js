@@ -26,6 +26,8 @@ const crm_1 = __importDefault(require("./routes/crm"));
 const returns_1 = __importDefault(require("./routes/returns"));
 dotenv_1.default.config();
 const app = (0, express_1.default)();
+// Trust proxy for Vercel deployment (X-Forwarded-For headers)
+app.set('trust proxy', 1);
 app.use((0, cors_1.default)());
 app.use((0, helmet_1.default)());
 app.use(express_1.default.json());
@@ -112,6 +114,17 @@ async function ensureSuperAdmin() {
     }
 }
 ensureSuperAdmin().catch((err) => console.error("Superadmin bootstrap failed", err));
+// Root route for testing
+app.get("/", (_req, res) => res.json({
+    status: "ok",
+    message: "Shopee-Amazon Automation API",
+    version: "1.0.0",
+    endpoints: {
+        health: "/health",
+        auth: "/auth/login, /auth/signup",
+        api: "/api/*"
+    }
+}));
 app.get("/health", (_req, res) => res.json({ status: "ok" }));
 app.post("/auth/login", asyncHandler(async (req, res) => {
     const schema = zod_1.z.object({
@@ -140,8 +153,35 @@ app.get("/shops", authMiddleware, asyncHandler(async (req, res) => {
     res.json(shops);
 }));
 app.get("/settings", authMiddleware, asyncHandler(async (req, res) => {
-    const shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, include: { setting: true } });
-    res.json(shops.map((s) => ({ shopId: s.id, setting: s.setting })));
+    const shop = await prisma.shop.findFirst({
+        where: { ownerId: req.userId, isActive: true },
+        include: { setting: true },
+        orderBy: { createdAt: 'asc' }
+    });
+    if (!shop || !shop.setting) {
+        return res.json({
+            includeAmazonPoints: false,
+            includeDomesticShipping: false,
+            domesticShippingCost: 0,
+            maxShippingDays: 7,
+            minExpectedProfit: 0,
+            shopIds: [],
+            isActive: false,
+            isDryRun: true,
+            reviewBandPercent: 0
+        });
+    }
+    res.json({
+        includeAmazonPoints: shop.setting.includePoints,
+        includeDomesticShipping: shop.setting.includeDomesticShipping,
+        domesticShippingCost: 0,
+        maxShippingDays: shop.setting.maxShippingDays,
+        minExpectedProfit: Number(shop.setting.minExpectedProfit),
+        shopIds: [shop.id],
+        isActive: shop.setting.isActive,
+        isDryRun: shop.setting.isDryRun,
+        reviewBandPercent: Number(shop.setting.reviewBandPercent || 0)
+    });
 }));
 app.post("/settings", authMiddleware, asyncHandler(async (req, res) => {
     const schema = zod_1.z.object({
@@ -634,13 +674,6 @@ app.get("/ops/metrics", authMiddleware, requireRole([client_1.UserRole.ADMIN]), 
     res.setHeader("Content-Type", "text/plain");
     res.send(metrics);
 }));
-// Global error handler
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err, _req, res, _next) => {
-    console.error(err);
-    res.status(500).json({ error: "Internal Server Error" });
-});
-const port = process.env.PORT || 4000;
 // Mount new enterprise feature routes
 app.use("/api/inventory", authMiddleware, inventory_1.default);
 app.use("/api/analytics", authMiddleware, analytics_1.default);
@@ -648,24 +681,24 @@ app.use("/api/pricing", authMiddleware, pricing_1.default);
 app.use("/api/notifications", authMiddleware, notifications_1.default);
 app.use("/api/crm", authMiddleware, crm_1.default);
 app.use("/api/returns", authMiddleware, returns_1.default);
-async function bootstrap() {
-    if (SUPERADMIN_EMAIL && SUPERADMIN_PASSWORD) {
-        const existing = await prisma.user.findUnique({ where: { email: SUPERADMIN_EMAIL } });
-        if (!existing) {
-            const hashed = await bcrypt_1.default.hash(SUPERADMIN_PASSWORD, 10);
-            await prisma.user.create({
-                data: { email: SUPERADMIN_EMAIL, passwordHash: hashed, role: client_1.UserRole.ADMIN, isActive: true }
-            });
-            console.log("Superadmin created");
-        }
-    }
+// 404 handler
+app.use((_req, res) => {
+    res.status(404).json({ error: "Not Found" });
+});
+// Global error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err, _req, res, _next) => {
+    console.error(err);
+    res.status(500).json({ error: "Internal Server Error" });
+});
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+    const port = process.env.PORT || 4000;
     app.listen(port, () => {
         console.log(`🚀 API listening on port ${port}`);
         console.log(`✅ Core endpoints: Authentication, Settings, Orders, Mappings, Admin`);
         console.log(`✅ Enterprise features: Inventory, Analytics, Pricing, Notifications, CRM, Returns`);
     });
 }
-bootstrap().catch((err) => {
-    console.error("Failed to start API", err);
-    process.exit(1);
-});
+// Export for Vercel serverless
+exports.default = app;

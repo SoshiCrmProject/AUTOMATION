@@ -172,8 +172,37 @@ app.get("/shops", authMiddleware, asyncHandler(async (req: AuthenticatedRequest,
 }));
 
 app.get("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
-  const shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, include: { setting: true } });
-  res.json(shops.map((s) => ({ shopId: s.id, setting: s.setting })));
+  const shop = await prisma.shop.findFirst({ 
+    where: { ownerId: req.userId, isActive: true }, 
+    include: { setting: true },
+    orderBy: { createdAt: 'asc' }
+  });
+  
+  if (!shop || !shop.setting) {
+    return res.json({
+      includeAmazonPoints: false,
+      includeDomesticShipping: false,
+      domesticShippingCost: 0,
+      maxShippingDays: 7,
+      minExpectedProfit: 0,
+      shopIds: [],
+      isActive: false,
+      isDryRun: true,
+      reviewBandPercent: 0
+    });
+  }
+  
+  res.json({
+    includeAmazonPoints: shop.setting.includePoints,
+    includeDomesticShipping: shop.setting.includeDomesticShipping,
+    domesticShippingCost: 0,
+    maxShippingDays: shop.setting.maxShippingDays,
+    minExpectedProfit: Number(shop.setting.minExpectedProfit),
+    shopIds: [shop.id],
+    isActive: shop.setting.isActive,
+    isDryRun: shop.setting.isDryRun,
+    reviewBandPercent: Number(shop.setting.reviewBandPercent || 0)
+  });
 }));
 
 app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {

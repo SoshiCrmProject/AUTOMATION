@@ -18,20 +18,87 @@ class AutomationError extends Error {
     }
 }
 exports.AutomationError = AutomationError;
+// Browser context pool for session reuse
+class BrowserPool {
+    constructor() {
+        this.browser = null;
+        this.contexts = new Map();
+        this.maxIdleTime = 10 * 60 * 1000; // 10 minutes
+    }
+    async getBrowser() {
+        if (!this.browser) {
+            this.browser = await playwright_1.chromium.launch({ headless: true });
+        }
+        return this.browser;
+    }
+    async getContext(email) {
+        const existing = this.contexts.get(email);
+        if (existing && Date.now() - existing.lastUsed < this.maxIdleTime) {
+            existing.lastUsed = Date.now();
+            return existing.context;
+        }
+        // Clean up old context
+        if (existing) {
+            await existing.context.close();
+            this.contexts.delete(email);
+        }
+        const browser = await this.getBrowser();
+        const context = await browser.newContext({
+            storageState: this.getStoragePath(email)
+        });
+        this.contexts.set(email, { context, lastUsed: Date.now() });
+        return context;
+    }
+    async saveContext(email, context) {
+        const storagePath = this.getStoragePath(email);
+        await context.storageState({ path: storagePath });
+    }
+    getStoragePath(email) {
+        const dir = path_1.default.join(process.cwd(), "tmp", "sessions");
+        if (!fs_1.default.existsSync(dir)) {
+            fs_1.default.mkdirSync(dir, { recursive: true });
+        }
+        const safeName = email.replace(/[^a-zA-Z0-9]/g, '_');
+        const filepath = path_1.default.join(dir, `amazon_${safeName}.json`);
+        // Return undefined if file doesn't exist (first time login)
+        return fs_1.default.existsSync(filepath) ? filepath : undefined;
+    }
+    async cleanup() {
+        for (const [_, { context }] of this.contexts) {
+            await context.close();
+        }
+        this.contexts.clear();
+        if (this.browser) {
+            await this.browser.close();
+            this.browser = null;
+        }
+    }
+}
+const browserPool = new BrowserPool();
 const selectors = {
-    price: ["#priceblock_ourprice", "#priceblock_dealprice", "span.a-price span.a-offscreen", "#corePrice_feature_div .a-offscreen"],
+    price: [
+        "#corePriceDisplay_desktop_feature_div .a-offscreen",
+        "#priceblock_ourprice",
+        "#priceblock_dealprice",
+        "span.a-price span.a-offscreen",
+        "#corePrice_feature_div .a-offscreen"
+    ],
     availability: ["#availability", "#availability span"],
     condition: ["#conditionInfo", "#olp_feature_div"],
     delivery: [
+        "#deliveryMessageInsideBuyBox_feature_div",
         "#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE_LARGE",
         "#mir-layout-DELIVERY_BLOCK-slot-PRIMARY_DELIVERY_MESSAGE",
         "#deliveryMessageMirId"
     ],
     points: ["#loyalty-points", "#apex_offerDisplay_desktop_summary", "#ppd-wallet-points-text"],
-    addToCart: ["#add-to-cart-button", "#buy-now-button", "input#add-to-cart-button"],
+    addToCart: ["#add-to-cart-button", "#add-to-wishlist-button-submit", "#buy-now-button", "input#add-to-cart-button"],
     proceedToCheckout: ["input[name='proceedToRetailCheckout']", "input#proceedToRetailCheckout", "a#hlb-ptc-btn-native"],
     placeOrder: ["input.place-your-order-button", "input[name='placeYourOrder1']", "input#submitOrderButtonId"],
-    orderId: ["span.order-id", ".order-number", "#order-number", "[data-test-id='order-summary-primary-actions']"]
+    orderId: ["span.order-id", ".order-number", "#order-number", "[data-test-id='order-summary-primary-actions']"],
+    staySignedIn: ["input[name='rememberMe']", "#rememberMe"],
+    deleteCartItem: [".sc-action-delete", "input[value='Delete']", "span[data-action='delete']"],
+    orderConfirmation: [".a-alert-success", "#confirmation-message", "h1:has-text('注文を承りました')", "h1:has-text('Thank you')"]
 };
 async function captureScreenshot(page, prefix) {
     const dir = path_1.default.join(process.cwd(), "tmp");
@@ -84,8 +151,18 @@ async function ensureLoggedIn(page, email, password) {
     await page.goto("https://www.amazon.co.jp/ap/signin", { waitUntil: "networkidle" });
     await page.fill("input[name='email']", email);
     await page.click("input#continue");
+    await page.waitForTimeout(500);
     await page.fill("input[name='password']", password);
+    // Check "Keep me signed in" to reduce 2FA prompts
+    for (const sel of selectors.staySignedIn) {
+        const checkbox = await page.$(sel);
+        if (checkbox) {
+            await checkbox.click();
+            break;
+        }
+    }
     await page.click("input#signInSubmit");
+    await page.waitForTimeout(2000);
     const twofa = await page.$("#auth-mfa-otpcode, #auth-mfa-otpcode-input, input[name='otpCode']");
     if (twofa) {
         const path = await captureScreenshot(page, "amazon-2fa");
@@ -93,8 +170,9 @@ async function ensureLoggedIn(page, email, password) {
     }
 }
 async function scrapeAmazonProduct(productUrl) {
-    const browser = await playwright_1.chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const browser = await browserPool.getBrowser();
+    const context = await browser.newContext();
+    const page = await context.newPage();
     await page.goto(productUrl, { waitUntil: "networkidle" });
     const priceText = await getFirstText(page, selectors.price);
     const availabilityText = await getFirstText(page, selectors.availability);
@@ -113,24 +191,41 @@ async function scrapeAmazonProduct(productUrl) {
     };
 }
 async function purchaseAmazonProduct(input) {
-    const browser = await playwright_1.chromium.launch({ headless: true });
-    const page = await browser.newPage();
+    const context = await browserPool.getContext(input.loginEmail);
+    const page = await context.newPage();
     try {
         await ensureLoggedIn(page, input.loginEmail, input.loginPassword);
-        return await checkoutOnAmazon(page, input);
+        const result = await checkoutOnAmazon(page, input);
+        // Save session state for reuse
+        await browserPool.saveContext(input.loginEmail, context);
+        await page.close();
+        return result;
     }
     catch (err) {
+        await page.close();
         if (err instanceof AutomationError)
             throw err;
         const path = await captureScreenshot(page, "amazon-failure");
         throw new AutomationError("AMAZON_PURCHASE_FAILED", err.message, path);
     }
-    finally {
-        await browser.close();
-    }
 }
 async function checkoutOnAmazon(page, input) {
     try {
+        // Clear cart before adding new item
+        await page.goto("https://www.amazon.co.jp/gp/cart/view.html", { waitUntil: "networkidle" });
+        await page.waitForTimeout(1000);
+        // Delete all existing cart items
+        const deleteButtons = await page.$$(selectors.deleteCartItem.join(','));
+        for (const btn of deleteButtons) {
+            try {
+                await btn.click();
+                await page.waitForTimeout(500);
+            }
+            catch (e) {
+                // Continue if delete fails
+            }
+        }
+        // Navigate to product and add to cart
         await page.goto(input.productUrl, { waitUntil: "networkidle" });
         let added = false;
         for (const sel of selectors.addToCart) {
@@ -166,7 +261,13 @@ async function checkoutOnAmazon(page, input) {
             let addressSelected = false;
             for (const el of addressElements) {
                 const text = await el.textContent();
-                if (text && text.includes(input.shippingAddressLabel)) {
+                if (!text)
+                    continue;
+                // Use exact match or very specific contains to avoid matching similar addresses
+                const normalizedText = text.trim().replace(/\s+/g, ' ');
+                const normalizedLabel = input.shippingAddressLabel.trim().replace(/\s+/g, ' ');
+                if (normalizedText === normalizedLabel ||
+                    (normalizedText.includes(normalizedLabel) && normalizedText.length - normalizedLabel.length < 20)) {
                     await el.click();
                     addressSelected = true;
                     break;
@@ -192,11 +293,21 @@ async function checkoutOnAmazon(page, input) {
             throw new AutomationError("AMAZON_PURCHASE_FAILED", "Place order failed", path);
         }
         await page.waitForTimeout(2500);
+        // Verify order confirmation page
+        const confirmationElement = await getFirstText(page, selectors.orderConfirmation);
+        if (!confirmationElement) {
+            const path = await captureScreenshot(page, "order-confirmation-failed");
+            throw new AutomationError("ORDER_CONFIRMATION_FAILED", "Order confirmation page not detected", path);
+        }
         const orderIdText = await getFirstText(page, selectors.orderId);
         const priceText = await getFirstText(page, selectors.price);
         const { value: finalPrice, currency } = parsePrice(priceText);
+        if (!orderIdText) {
+            const path = await captureScreenshot(page, "order-id-not-found");
+            throw new AutomationError("ORDER_ID_NOT_FOUND", "Order ID not found on confirmation page", path);
+        }
         return {
-            amazonOrderId: orderIdText || null,
+            amazonOrderId: orderIdText,
             finalPrice: Number.isNaN(finalPrice) ? undefined : finalPrice,
             currency,
             shippingCost: undefined,

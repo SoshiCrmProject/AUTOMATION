@@ -88,15 +88,15 @@ model Shop {
   amazonCredential AmazonCredential?
   ErrorItem        ErrorItem[]
   ShopeeCredential ShopeeCredential?
-  
+
   // Advanced features
-  inventories          ProductInventory[]
-  pricingRules         PricingRule[]
-  notificationChannels NotificationChannel[]
-  notificationRules    NotificationRule[]
-  marketplaces         Marketplace[]
-  customers            Customer[]
-  dailyMetrics         DailyMetrics[]
+  inventories            ProductInventory[]
+  pricingRules           PricingRule[]
+  notificationChannels   NotificationChannel[]
+  notificationRules      NotificationRule[]
+  marketplaces           Marketplace[]
+  customers              Customer[]
+  dailyMetrics           DailyMetrics[]
   productRecommendations ProductRecommendation[]
 
   @@index([ownerId, isActive])
@@ -117,6 +117,7 @@ model AutoShippingSetting {
   includeDomesticShipping     Boolean             @default(false)
   defaultShippingAddressLabel String?
   currency                    String              @default("JPY")
+  lastShopeePolledAt          DateTime?
   createdAt                   DateTime            @default(now())
   updatedAt                   DateTime            @updatedAt
 
@@ -193,12 +194,16 @@ model ShopeeOrder {
   errorItems                  ErrorItem[]
   createdAt                   DateTime         @default(now())
   updatedAt                   DateTime         @updatedAt
-  
+
   // Advanced features
   returnRequests  ReturnRequest[]
   fraudDetections FraudDetection[]
 
   @@index([shopId, shopeeOrderSn])
+  @@index([shopId, processingStatus])
+  @@index([shopId, shopeeStatus])
+  @@index([shopId, createdAt])
+  @@index([processingStatus, processingMode])
 }
 
 model AmazonOrder {
@@ -335,10 +340,10 @@ model ProductInventory {
   createdAt         DateTime        @default(now())
   updatedAt         DateTime        @updatedAt
 
-  stockMovements   StockMovement[]
-  priceHistory     PriceHistory[]
-  lowStockAlerts   LowStockAlert[]
-  productMappings  ProductMapping[]
+  stockMovements  StockMovement[]
+  priceHistory    PriceHistory[]
+  lowStockAlerts  LowStockAlert[]
+  productMappings ProductMapping[]
 
   @@unique([shopId, shopeeItemId])
   @@index([status])
@@ -347,42 +352,42 @@ model ProductInventory {
 
 // Stock Movement Tracking
 model StockMovement {
-  id          String           @id @default(cuid())
-  productId   String
-  product     ProductInventory @relation(fields: [productId], references: [id])
+  id           String           @id @default(cuid())
+  productId    String
+  product      ProductInventory @relation(fields: [productId], references: [id])
   movementType String // IN, OUT, ADJUSTMENT, RETURN
-  quantity    Int
-  reference   String? // Order ID, RMA, etc
-  reason      String?
-  performedBy String?
-  previousQty Int
-  newQty      Int
-  createdAt   DateTime         @default(now())
+  quantity     Int
+  reference    String? // Order ID, RMA, etc
+  reason       String?
+  performedBy  String?
+  previousQty  Int
+  newQty       Int
+  createdAt    DateTime         @default(now())
 
   @@index([productId, createdAt])
 }
 
 // Dynamic Pricing Engine
 model PricingRule {
-  id                  String        @id @default(cuid())
-  shopId              String
-  shop                Shop          @relation(fields: [shopId], references: [id])
-  name                String
-  ruleType            PriceRuleType
-  isActive            Boolean       @default(true)
-  minMarginPercent    Decimal?      @db.Decimal(5, 2)
-  maxMarginPercent    Decimal?      @db.Decimal(5, 2)
-  fixedMarkupAmount   Decimal?      @db.Decimal(18, 2)
-  competitorUrls      String[]
-  priceFloor          Decimal?      @db.Decimal(18, 2)
-  priceCeiling        Decimal?      @db.Decimal(18, 2)
-  applyToCategories   String[]
-  excludeProducts     String[]
-  scheduleStartTime   DateTime?
-  scheduleEndTime     DateTime?
-  priority            Int           @default(100)
-  createdAt           DateTime      @default(now())
-  updatedAt           DateTime      @updatedAt
+  id                String        @id @default(cuid())
+  shopId            String
+  shop              Shop          @relation(fields: [shopId], references: [id])
+  name              String
+  ruleType          PriceRuleType
+  isActive          Boolean       @default(true)
+  minMarginPercent  Decimal?      @db.Decimal(5, 2)
+  maxMarginPercent  Decimal?      @db.Decimal(5, 2)
+  fixedMarkupAmount Decimal?      @db.Decimal(18, 2)
+  competitorUrls    String[]
+  priceFloor        Decimal?      @db.Decimal(18, 2)
+  priceCeiling      Decimal?      @db.Decimal(18, 2)
+  applyToCategories String[]
+  excludeProducts   String[]
+  scheduleStartTime DateTime?
+  scheduleEndTime   DateTime?
+  priority          Int           @default(100)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([shopId, isActive])
 }
@@ -405,15 +410,15 @@ model PriceHistory {
 
 // Smart Notification System
 model NotificationChannel {
-  id           String           @id @default(cuid())
-  shopId       String
-  shop         Shop             @relation(fields: [shopId], references: [id])
-  type         NotificationType
-  isActive     Boolean          @default(true)
-  config       Json // Email address, webhook URL, Slack channel, etc
-  retryAttempts Int             @default(3)
-  createdAt    DateTime         @default(now())
-  updatedAt    DateTime         @updatedAt
+  id            String           @id @default(cuid())
+  shopId        String
+  shop          Shop             @relation(fields: [shopId], references: [id])
+  type          NotificationType
+  isActive      Boolean          @default(true)
+  config        Json // Email address, webhook URL, Slack channel, etc
+  retryAttempts Int              @default(3)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   notifications SentNotification[]
 
@@ -421,35 +426,35 @@ model NotificationChannel {
 }
 
 model NotificationRule {
-  id            String               @id @default(cuid())
-  shopId        String
-  shop          Shop                 @relation(fields: [shopId], references: [id])
-  name          String
-  trigger       String // ORDER_FAILED, LOW_STOCK, PROFIT_DROP, etc
-  priority      NotificationPriority @default(MEDIUM)
-  isActive      Boolean              @default(true)
-  conditions    Json // Threshold values, filters
-  channelTypes  NotificationType[]
-  cooldownMinutes Int               @default(60)
-  createdAt     DateTime             @default(now())
-  updatedAt     DateTime             @updatedAt
+  id              String               @id @default(cuid())
+  shopId          String
+  shop            Shop                 @relation(fields: [shopId], references: [id])
+  name            String
+  trigger         String // ORDER_FAILED, LOW_STOCK, PROFIT_DROP, etc
+  priority        NotificationPriority @default(MEDIUM)
+  isActive        Boolean              @default(true)
+  conditions      Json // Threshold values, filters
+  channelTypes    NotificationType[]
+  cooldownMinutes Int                  @default(60)
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
   @@index([shopId, isActive])
 }
 
 model SentNotification {
-  id          String              @id @default(cuid())
-  channelId   String
-  channel     NotificationChannel @relation(fields: [channelId], references: [id])
-  trigger     String
-  priority    NotificationPriority
-  subject     String
-  message     String
-  metadata    Json?
-  sentAt      DateTime
-  success     Boolean
-  error       String?
-  retryCount  Int                 @default(0)
+  id         String               @id @default(cuid())
+  channelId  String
+  channel    NotificationChannel  @relation(fields: [channelId], references: [id])
+  trigger    String
+  priority   NotificationPriority
+  subject    String
+  message    String
+  metadata   Json?
+  sentAt     DateTime
+  success    Boolean
+  error      String?
+  retryCount Int                  @default(0)
 
   @@index([channelId, sentAt])
   @@index([trigger, sentAt])
@@ -481,19 +486,19 @@ model ReturnRequest {
 
 // Multi-Marketplace Support
 model Marketplace {
-  id          String          @id @default(cuid())
-  shopId      String
-  shop        Shop            @relation(fields: [shopId], references: [id])
-  type        MarketplaceType
-  accountId   String
-  accountName String
+  id              String          @id @default(cuid())
+  shopId          String
+  shop            Shop            @relation(fields: [shopId], references: [id])
+  type            MarketplaceType
+  accountId       String
+  accountName     String
   apiKeyEncrypted String?
-  apiKeyIv    String?
-  isActive    Boolean         @default(true)
-  lastSyncAt  DateTime?
-  syncConfig  Json?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  apiKeyIv        String?
+  isActive        Boolean         @default(true)
+  lastSyncAt      DateTime?
+  syncConfig      Json?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
   @@unique([shopId, type, accountId])
   @@index([type, isActive])
@@ -501,22 +506,22 @@ model Marketplace {
 
 // Advanced Product Mapping with Priority
 model ProductMapping {
-  id               String           @id @default(cuid())
-  productId        String
-  product          ProductInventory @relation(fields: [productId], references: [id])
-  shopeeItemId     String
-  amazonAsin       String?
-  amazonUrl        String
-  priority         Int              @default(1)
-  isActive         Boolean          @default(true)
-  lastVerifiedAt   DateTime?
+  id                String           @id @default(cuid())
+  productId         String
+  product           ProductInventory @relation(fields: [productId], references: [id])
+  shopeeItemId      String
+  amazonAsin        String?
+  amazonUrl         String
+  priority          Int              @default(1)
+  isActive          Boolean          @default(true)
+  lastVerifiedAt    DateTime?
   verificationNotes String?
-  performanceScore Decimal?         @db.Decimal(5, 2)
-  avgShippingDays  Int?
-  avgProfit        Decimal?         @db.Decimal(18, 2)
-  successRate      Decimal?         @db.Decimal(5, 2)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  performanceScore  Decimal?         @db.Decimal(5, 2)
+  avgShippingDays   Int?
+  avgProfit         Decimal?         @db.Decimal(18, 2)
+  successRate       Decimal?         @db.Decimal(5, 2)
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
 
   @@unique([productId, amazonUrl])
   @@index([shopeeItemId])
@@ -525,20 +530,20 @@ model ProductMapping {
 
 // Shipping Optimization
 model ShippingRate {
-  id            String          @id @default(cuid())
-  carrier       ShippingCarrier
+  id             String          @id @default(cuid())
+  carrier        ShippingCarrier
   fromPostalCode String
-  toPostalCode  String
-  weightGrams   Int
-  lengthCm      Int?
-  widthCm       Int?
-  heightCm      Int?
-  rate          Decimal         @db.Decimal(18, 2)
-  currency      String          @default("JPY")
-  estimatedDays Int
-  isActive      Boolean         @default(true)
-  lastUpdated   DateTime        @default(now())
-  createdAt     DateTime        @default(now())
+  toPostalCode   String
+  weightGrams    Int
+  lengthCm       Int?
+  widthCm        Int?
+  heightCm       Int?
+  rate           Decimal         @db.Decimal(18, 2)
+  currency       String          @default("JPY")
+  estimatedDays  Int
+  isActive       Boolean         @default(true)
+  lastUpdated    DateTime        @default(now())
+  createdAt      DateTime        @default(now())
 
   @@index([carrier, fromPostalCode, toPostalCode])
   @@index([isActive])
@@ -546,24 +551,24 @@ model ShippingRate {
 
 // Customer Management CRM
 model Customer {
-  id              String    @id @default(cuid())
-  shopId          String
-  shop            Shop      @relation(fields: [shopId], references: [id])
-  shopeeUserId    String?
-  email           String?
-  name            String
-  phone           String?
-  totalOrders     Int       @default(0)
-  totalSpent      Decimal   @default(0) @db.Decimal(18, 2)
-  avgOrderValue   Decimal?  @db.Decimal(18, 2)
-  loyaltyPoints   Int       @default(0)
-  tier            String    @default("BRONZE") // BRONZE, SILVER, GOLD, PLATINUM
-  tags            String[]
-  notes           String?
-  isBlacklisted   Boolean   @default(false)
-  lastOrderAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id            String    @id @default(cuid())
+  shopId        String
+  shop          Shop      @relation(fields: [shopId], references: [id])
+  shopeeUserId  String?
+  email         String?
+  name          String
+  phone         String?
+  totalOrders   Int       @default(0)
+  totalSpent    Decimal   @default(0) @db.Decimal(18, 2)
+  avgOrderValue Decimal?  @db.Decimal(18, 2)
+  loyaltyPoints Int       @default(0)
+  tier          String    @default("BRONZE") // BRONZE, SILVER, GOLD, PLATINUM
+  tags          String[]
+  notes         String?
+  isBlacklisted Boolean   @default(false)
+  lastOrderAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   interactions CustomerInteraction[]
 
@@ -573,17 +578,17 @@ model Customer {
 }
 
 model CustomerInteraction {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id])
-  type        String // MESSAGE, REVIEW, RETURN, COMPLAINT
-  channel     String // EMAIL, CHAT, PHONE
-  subject     String?
-  message     String
-  sentiment   String? // POSITIVE, NEUTRAL, NEGATIVE
-  resolvedAt  DateTime?
-  assignedTo  String?
-  createdAt   DateTime @default(now())
+  id         String    @id @default(cuid())
+  customerId String
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  type       String // MESSAGE, REVIEW, RETURN, COMPLAINT
+  channel    String // EMAIL, CHAT, PHONE
+  subject    String?
+  message    String
+  sentiment  String? // POSITIVE, NEUTRAL, NEGATIVE
+  resolvedAt DateTime?
+  assignedTo String?
+  createdAt  DateTime  @default(now())
 
   @@index([customerId, createdAt])
 }
@@ -612,14 +617,14 @@ model DailyMetrics {
 
 // Low Stock Alerts
 model LowStockAlert {
-  id          String           @id @default(cuid())
-  productId   String
-  product     ProductInventory @relation(fields: [productId], references: [id])
-  currentQty  Int
-  threshold   Int
-  notifiedAt  DateTime         @default(now())
-  resolvedAt  DateTime?
-  acknowledged Boolean         @default(false)
+  id           String           @id @default(cuid())
+  productId    String
+  product      ProductInventory @relation(fields: [productId], references: [id])
+  currentQty   Int
+  threshold    Int
+  notifiedAt   DateTime         @default(now())
+  resolvedAt   DateTime?
+  acknowledged Boolean          @default(false)
 
   @@index([productId, resolvedAt])
 }
@@ -641,16 +646,16 @@ model ProductRecommendation {
 }
 
 model FraudDetection {
-  id              String   @id @default(cuid())
-  shopeeOrderId   String
-  shopeeOrder     ShopeeOrder @relation(fields: [shopeeOrderId], references: [id])
-  riskScore       Decimal  @db.Decimal(5, 2)
-  riskFactors     String[]
-  isBlocked       Boolean  @default(false)
-  reviewedAt      DateTime?
-  reviewedBy      String?
-  reviewNotes     String?
-  createdAt       DateTime @default(now())
+  id            String      @id @default(cuid())
+  shopeeOrderId String
+  shopeeOrder   ShopeeOrder @relation(fields: [shopeeOrderId], references: [id])
+  riskScore     Decimal     @db.Decimal(5, 2)
+  riskFactors   String[]
+  isBlocked     Boolean     @default(false)
+  reviewedAt    DateTime?
+  reviewedBy    String?
+  reviewNotes   String?
+  createdAt     DateTime    @default(now())
 
   @@index([riskScore])
   @@index([isBlocked])

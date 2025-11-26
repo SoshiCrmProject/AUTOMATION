@@ -448,9 +448,24 @@ async function pollShop(shopId: string) {
     where: { id: shopId },
     include: { setting: true, ShopeeCredential: true, selections: true }
   });
-  if (!shop || !shop.setting || !shop.setting.isActive) return;
+  
+  // Validate shop configuration before proceeding
+  if (!shop) {
+    console.error(`Shop ${shopId} not found`);
+    return;
+  }
+  
+  if (!shop.setting || !shop.setting.isActive) {
+    console.log(`Shop ${shopId} inactive or missing settings`);
+    return;
+  }
+  
   const shopeeCred = shop.ShopeeCredential;
-  if (!shopeeCred || !AES_KEY) return;
+  if (!shopeeCred || !AES_KEY) {
+    console.error(`Shop ${shopId} missing Shopee credentials or AES key`);
+    await sendAlert("SHOPEE_CONFIG_ERROR", `Shop ${shopId} missing credentials`, { shopId });
+    return;
+  }
 
   const partnerKey = decryptSecret(shopeeCred.partnerKeyEncrypted, shopeeCred.partnerKeyIv, AES_KEY);
   const accessToken = decryptSecret(shopeeCred.accessTokenEncrypted, shopeeCred.accessTokenIv, AES_KEY);
@@ -465,7 +480,14 @@ async function pollShop(shopId: string) {
 
   let orders;
   try {
-    orders = await fetchNewOrders(cfg);
+    // Use last polled timestamp for incremental polling
+    orders = await fetchNewOrders(cfg, shop.setting.lastShopeePolledAt ?? undefined);
+    
+    // Update last polled timestamp after successful fetch
+    await prisma.autoShippingSetting.update({
+      where: { shopId },
+      data: { lastShopeePolledAt: new Date() }
+    });
   } catch (err: any) {
     await sendAlert("SHOPEE_POLL_FAIL", err.message, { shopId });
     return;
@@ -526,7 +548,9 @@ async function pollShop(shopId: string) {
         }
       });
     } catch (e: any) {
+      console.error(`Failed to process order ${o.order_sn}:`, e.message);
       await sendAlert("SHOPEE_UPSERT_FAIL", e.message, { shopId, orderSn: o.order_sn });
+      // Continue processing other orders instead of failing completely
     }
   }
 
@@ -534,19 +558,32 @@ async function pollShop(shopId: string) {
 }
 
 function mapShopeeStatus(status: string): ShopeeStatus {
-  switch (status?.toUpperCase()) {
-    case "READY_TO_SHIP":
-    case "READY_TO_SHIP_AWAITING_PICKUP":
-    case "READY_TO_SHIP_SHIPPING":
+  const normalizedStatus = status?.toUpperCase().replace(/[_\s-]/g, '_');
+  
+  switch (normalizedStatus) {
+    case 'READY_TO_SHIP':
+    case 'READYTOSHIP':
+    case 'AWAITING_SHIPMENT':
+    case 'READY_TO_SHIP_AWAITING_PICKUP':
+    case 'READY_TO_SHIP_SHIPPING':
       return ShopeeStatus.READY_TO_SHIP;
-    case "SHIPPED":
+    case 'SHIPPED':
+    case 'AWAITING_PICKUP':
+    case 'IN_TRANSIT':
       return ShopeeStatus.SHIPPED;
-    case "COMPLETED":
+    case 'COMPLETED':
+    case 'DELIVERED':
       return ShopeeStatus.COMPLETED;
-    case "CANCELLED":
+    case 'CANCELLED':
+    case 'IN_CANCEL':
+    case 'CANCELED':
       return ShopeeStatus.CANCELLED;
-    case "RETURNED":
+    case 'RETURNED':
+    case 'RETURN':
       return ShopeeStatus.RETURNED;
+    case 'UNPAID':
+    case 'PENDING':
+    case 'INVOICE_PENDING':
     default:
       return ShopeeStatus.UNPAID;
   }
