@@ -5,9 +5,11 @@ import useSWR from "swr";
 import AppNav from "../components/AppNav";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { settingsTour } from "../components/tourConfigs";
-import { 
-  Card, CardHeader, Button, Input, Alert, LoadingSpinner, Badge 
-} from "../components/ui/index";
+import { Card } from "../components/ui/Card";
+import { Button } from "../components/ui/Button";
+import { Input } from "../components/ui/Input";
+import { Alert } from "../components/ui/Utility";
+import { Badge } from "../components/ui/Badge";
 import Toast, { pushToast } from "../components/Toast";
 import api from "../lib/apiClient";
 
@@ -30,6 +32,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<string>("general");
   const [showTour, setShowTour] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   
   // Form states
   const [includeAmazonPoints, setIncludeAmazonPoints] = useState(false);
@@ -51,6 +54,10 @@ export default function SettingsPage() {
   
   // Alert webhook
   const [alertWebhookUrl, setAlertWebhookUrl] = useState("");
+  
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const { data: settings, error: settingsError, mutate: refreshSettings } = useSWR<Settings>(
     "/settings", 
@@ -140,43 +147,43 @@ export default function SettingsPage() {
         {/* Status Cards */}
         {settings && (
           <div className="grid grid-3" style={{ marginBottom: 24 }}>
-            <div style={{ textAlign: "center", padding: 24 }}>
-              <Card>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>
-                {isActive ? "✅" : "⏸️"}
-              </div>
-              <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                Automation Status
-              </div>
-              <Badge variant={isActive ? "success" : "warning"}>
-                {isActive ? "Active" : "Inactive"}
-              </Badge>
-            </Card>
-            </div>
-            <div style={{ textAlign: "center", padding: 24 }}>
-              <Card>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>
-                {isDryRun ? "🧪" : "🚀"}
-              </div>
-              <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                Execution Mode
-              </div>
-              <Badge variant={isDryRun ? "info" : "success"}>
-                {isDryRun ? "Dry Run" : "Live"}
-              </Badge>
-            </Card>
-            </div>
-            <div style={{ textAlign: "center", padding: 24 }}>
-              <Card>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
-              <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                Min Expected Profit
-              </div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: "var(--color-success)" }}>
-                ${minExpectedProfit.toFixed(2)}
+            <Card>
+              <div style={{ textAlign: "center", padding: 12 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>
+                  {isActive ? "✅" : "⏸️"}
+                </div>
+                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  Automation Status
+                </div>
+                <Badge variant={isActive ? "success" : "warning"}>
+                  {isActive ? "Active" : "Inactive"}
+                </Badge>
               </div>
             </Card>
-            </div>
+            <Card>
+              <div style={{ textAlign: "center", padding: 12 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>
+                  {isDryRun ? "🧪" : "🚀"}
+                </div>
+                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  Execution Mode
+                </div>
+                <Badge variant={isDryRun ? "info" : "success"}>
+                  {isDryRun ? "Dry Run" : "Live"}
+                </Badge>
+              </div>
+            </Card>
+            <Card>
+              <div style={{ textAlign: "center", padding: 12 }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
+                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
+                  Min Expected Profit
+                </div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--color-success)" }}>
+                  ${minExpectedProfit.toFixed(2)}
+                </div>
+              </div>
+            </Card>
           </div>
         )}
 
@@ -445,18 +452,22 @@ export default function SettingsPage() {
 
         <Toast />
 
-        <OnboardingTour 
-          pageName="settings" 
-          steps={settingsTour} 
-          onComplete={() => setShowTour(false)} 
-        />
-        {!showTour && <HelpButton onClick={() => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem("tour_completed_settings");
-            setShowTour(true);
-            window.location.reload();
-          }
-        }} />}
+        {mounted && (
+          <>
+            <OnboardingTour 
+              pageName="settings" 
+              steps={settingsTour} 
+              onComplete={() => setShowTour(false)} 
+            />
+            {!showTour && <HelpButton onClick={() => {
+              if (typeof window !== 'undefined') {
+                localStorage.removeItem("tour_completed_settings");
+                setShowTour(true);
+                window.location.reload();
+              }
+            }} />}
+          </>
+        )}
       </div>
     </div>
   );
