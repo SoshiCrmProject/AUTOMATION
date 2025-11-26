@@ -18,18 +18,25 @@ type OnboardingTourProps = {
 export default function OnboardingTour({ pageName, steps, onComplete }: OnboardingTourProps) {
   const [currentStep, setCurrentStep] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    
     // Check if user has seen this tour
     const tourKey = `tour_completed_${pageName}`;
-    const hasSeenTour = localStorage.getItem(tourKey);
+    const hasSeenTour = typeof window !== 'undefined' ? localStorage.getItem(tourKey) : null;
     
     if (!hasSeenTour) {
       // Show tour after a brief delay
       const timer = setTimeout(() => setIsOpen(true), 500);
       return () => clearTimeout(timer);
     }
-  }, [pageName]);
+  }, [pageName, mounted]);
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -46,13 +53,17 @@ export default function OnboardingTour({ pageName, steps, onComplete }: Onboardi
   };
 
   const handleComplete = () => {
-    localStorage.setItem(`tour_completed_${pageName}`, "true");
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`tour_completed_${pageName}`, "true");
+    }
     setIsOpen(false);
     onComplete();
   };
 
   const handleSkip = () => {
-    localStorage.setItem(`tour_completed_${pageName}`, "true");
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(`tour_completed_${pageName}`, "true");
+    }
     setIsOpen(false);
   };
 

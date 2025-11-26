@@ -1,1 +1,1 @@
-{"version":1,"functions":{"/admin/audit":{},"/admin/users":{},"/analytics":{},"/errors":{},"/dashboard":{},"/":{},"/login":{},"/crm":{},"/ops":{},"/mappings":{},"/notifications":{},"/orders/[id]":{},"/inventory":{},"/signup":{},"/orders":{},"/settings":{},"/review":{}}}
+{"version":1,"functions":{"/admin/users":{},"/admin/audit":{},"/errors":{},"/dashboard":{},"/analytics":{},"/login":{},"/":{},"/crm":{},"/mappings":{},"/ops":{},"/orders/[id]":{},"/inventory":{},"/notifications":{},"/orders":{},"/signup":{},"/settings":{},"/review":{}}}

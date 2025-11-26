@@ -417,9 +417,11 @@ export default function Analytics() {
           onComplete={() => setShowTour(false)} 
         />
         {!showTour && <HelpButton onClick={() => {
-          localStorage.removeItem("tour_completed_analytics");
-          setShowTour(true);
-          window.location.reload();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem("tour_completed_analytics");
+            setShowTour(true);
+            window.location.reload();
+          }
         }} />}
       </div>
     </div>

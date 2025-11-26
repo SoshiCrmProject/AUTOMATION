@@ -217,9 +217,11 @@ export default function Inventory() {
           onComplete={() => setShowTour(false)} 
         />
         {!showTour && <HelpButton onClick={() => {
-          localStorage.removeItem("tour_completed_inventory");
-          setShowTour(true);
-          window.location.reload();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem("tour_completed_inventory");
+            setShowTour(true);
+            window.location.reload();
+          }
         }} />}
       <div className="container">
         {/* Enhanced Hero Section */}

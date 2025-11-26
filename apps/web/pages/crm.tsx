@@ -681,9 +681,11 @@ export default function CRM() {
           onComplete={() => setShowTour(false)} 
         />
         {!showTour && <HelpButton onClick={() => {
-          localStorage.removeItem("tour_completed_crm");
-          setShowTour(true);
-          window.location.reload();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem("tour_completed_crm");
+            setShowTour(true);
+            window.location.reload();
+          }
         }} />}
       </div>
     </div>

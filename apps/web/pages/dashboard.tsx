@@ -341,9 +341,11 @@ export default function Dashboard() {
           onComplete={() => setShowTour(false)} 
         />
         {!showTour && <HelpButton onClick={() => {
-          localStorage.removeItem("tour_completed_dashboard");
-          setShowTour(true);
-          window.location.reload();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem("tour_completed_dashboard");
+            setShowTour(true);
+            window.location.reload();
+          }
         }} />}
       </div>
     </div>

@@ -52,7 +52,14 @@ export default function SettingsPage() {
   // Alert webhook
   const [alertWebhookUrl, setAlertWebhookUrl] = useState("");
   
-  const { data: settings, mutate: refreshSettings } = useSWR<Settings>("/settings", fetcher);
+  const { data: settings, error: settingsError, mutate: refreshSettings } = useSWR<Settings>(
+    "/settings", 
+    fetcher,
+    { 
+      shouldRetryOnError: false,
+      revalidateOnFocus: false
+    }
+  );
 
   useEffect(() => {
     if (settings) {
@@ -444,9 +451,11 @@ export default function SettingsPage() {
           onComplete={() => setShowTour(false)} 
         />
         {!showTour && <HelpButton onClick={() => {
-          localStorage.removeItem("tour_completed_settings");
-          setShowTour(true);
-          window.location.reload();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem("tour_completed_settings");
+            setShowTour(true);
+            window.location.reload();
+          }
         }} />}
       </div>
     </div>
