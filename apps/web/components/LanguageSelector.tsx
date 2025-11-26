@@ -128,7 +128,9 @@ export default function LanguageSelector() {
                 fontSize: 13, 
                 color: "var(--color-text-muted)" 
               }}>
-                Choose your preferred language for the interface
+                {locale === "ja" 
+                  ? "インターフェースの言語を選択してください" 
+                  : "Choose your preferred language for the interface"}
               </p>
             </div>
 
@@ -187,7 +189,9 @@ export default function LanguageSelector() {
               color: "var(--color-text-muted)",
               lineHeight: 1.6
             }}>
-              💡 <strong>Tip:</strong> All pages, buttons, and messages will update to your selected language instantly.
+              💡 <strong>{locale === "ja" ? "ヒント：" : "Tip:"}</strong> {locale === "ja" 
+                ? "すべてのページ、ボタン、メッセージが選択した言語に即座に更新されます。"
+                : "All pages, buttons, and messages will update to your selected language instantly."}
             </div>
           </div>
         </>

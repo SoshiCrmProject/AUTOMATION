@@ -2,7 +2,7 @@
 const nextConfig = {
   i18n: {
     locales: ["en", "ja"],
-    defaultLocale: "en"
+    defaultLocale: "ja"
   },
   async rewrites() {
     if (process.env.NEXT_PUBLIC_MOCK_API === "1") return [];

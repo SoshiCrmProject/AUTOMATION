@@ -3,6 +3,7 @@ import { useTranslation } from "next-i18next";
 import { useRouter } from "next/router";
 import api from "../lib/apiClient";
 import { pushToast } from "./Toast";
+import InlineLanguageSwitcher from "./InlineLanguageSwitcher";
 
 
 type Shop = { id: string; name: string };
@@ -262,9 +263,12 @@ export default function OnboardingModal() {
         >
           ×
         </button>
-        <p style={{ margin: 0, color: "#0f172a", fontWeight: 700, letterSpacing: 0.5 }}>
-          {t("onboardingModalTitle")}
-        </p>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+          <p style={{ margin: 0, color: "#0f172a", fontWeight: 700, letterSpacing: 0.5 }}>
+            {t("onboardingModalTitle")}
+          </p>
+          <InlineLanguageSwitcher />
+        </div>
         <div style={{ marginTop: 12 }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
             {steps.map((_, idx) => (
