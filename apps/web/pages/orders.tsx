@@ -10,7 +10,7 @@ import { ordersTour } from "../components/tourConfigs";
 import { 
   Card, CardHeader, StatCard, Button, Badge, Input, Select,
   Table, Modal, Tabs, Alert, LoadingSpinner, EmptyState 
-} from "../components/ui";
+} from "../components/ui/index";
 
 type Order = {
   id: string;

@@ -22,7 +22,7 @@ import {
   Table,
   Badge,
   Modal
-} from "../components/ui";
+} from "../components/ui/index";
 
 type Order = {
   id: string;

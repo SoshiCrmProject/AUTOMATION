@@ -7,7 +7,7 @@ import AppNav from "../components/AppNav";
 import { 
   Card, CardHeader, StatCard, Button, Badge, Input, Table, 
   Alert, LoadingSpinner, EmptyState, Modal, Select, Tabs
-} from "../components/ui";
+} from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);

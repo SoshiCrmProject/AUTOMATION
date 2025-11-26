@@ -6,8 +6,8 @@ import AppNav from "../components/AppNav";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { settingsTour } from "../components/tourConfigs";
 import { 
-  Card, CardHeader, Button, Input, Select, Tabs, Alert, LoadingSpinner, Badge 
-} from "../components/ui";
+  Card, CardHeader, Button, Input, Alert, LoadingSpinner, Badge 
+} from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 import api from "../lib/apiClient";
 
@@ -189,16 +189,48 @@ export default function SettingsPage() {
 
         {/* Tabbed Settings Interface */}
         <Card>
-          <Tabs
-            defaultTab={activeTab}
-            onChange={setActiveTab}
-            tabs={[
-              { id: "general", label: "General", icon: "⚙️", content: <></> },
-              { id: "shopee", label: "Shopee", icon: "🛍️", content: <></> },
-              { id: "amazon", label: "Amazon", icon: "📦", content: <></> },
-              { id: "notifications", label: "Notifications", icon: "🔔", content: <></> }
-            ]}
-          />
+          <div
+            className="tabs-header"
+            style={{
+              display: 'flex',
+              gap: '8px',
+              borderBottom: '2px solid var(--color-border)',
+              marginBottom: '24px',
+              overflowX: 'auto',
+            }}
+          >
+            {[
+              { id: "general", label: "General", icon: "⚙️" },
+              { id: "shopee", label: "Shopee", icon: "🛍️" },
+              { id: "amazon", label: "Amazon", icon: "📦" },
+              { id: "notifications", label: "Notifications", icon: "🔔" }
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  padding: '14px 20px',
+                  fontSize: '14px',
+                  fontWeight: activeTab === tab.id ? 700 : 500,
+                  color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
+                  cursor: 'pointer',
+                  position: 'relative',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  transition: 'all 0.2s ease',
+                  borderBottom: activeTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
+                  marginBottom: '-2px',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+              </button>
+            ))}
+          </div>
 
           {/* General Tab */}
           {activeTab === "general" && (

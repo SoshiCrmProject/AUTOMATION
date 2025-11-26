@@ -9,7 +9,7 @@ import { crmTour } from "../components/tourConfigs";
 import { 
   Card, CardHeader, StatCard, Button, Badge, Input, Select,
   Table, Modal, Tabs, Alert, LoadingSpinner, EmptyState 
-} from "../components/ui";
+} from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);

@@ -20,7 +20,7 @@ import {
   Modal,
   Input,
   Select
-} from "../components/ui";
+} from "../components/ui/index";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 

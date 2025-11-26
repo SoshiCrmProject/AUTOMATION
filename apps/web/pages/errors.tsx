@@ -8,7 +8,7 @@ import api from "../lib/apiClient";
 import { 
   Card, CardHeader, Button, Badge, Input, Table, 
   Alert, LoadingSpinner, EmptyState 
-} from "../components/ui";
+} from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
 type ErrorItem = {

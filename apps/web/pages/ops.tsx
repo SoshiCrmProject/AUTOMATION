@@ -6,7 +6,7 @@ import StatusBadge from "../components/StatusBadge";
 import api from "../lib/apiClient";
 import { 
   Card, CardHeader, StatCard, Button, Input, Badge, Alert 
-} from "../components/ui";
+} from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
 type QueueHealth = { waiting: number; active: number; failed: number; delayed: number };

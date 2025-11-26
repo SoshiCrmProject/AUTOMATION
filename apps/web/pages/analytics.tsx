@@ -14,7 +14,7 @@ import {
   Alert, 
   LoadingSpinner,
   Badge
-} from "../components/ui";
+} from "../components/ui/index";
 import { 
   LineChart, 
   Line, 
