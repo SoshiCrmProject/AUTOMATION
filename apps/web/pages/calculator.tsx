@@ -37,6 +37,27 @@ export default function ProfitCalculatorPage() {
   const [includeDomesticShipping, setIncludeDomesticShipping] = useState(false);
   const [domesticShippingCost, setDomesticShippingCost] = useState<number>(500);
 
+  // Load scraped data from localStorage on mount
+  useState(() => {
+    if (typeof window !== 'undefined') {
+      const scraped = localStorage.getItem('amazonScrapedData');
+      if (scraped) {
+        try {
+          const data = JSON.parse(scraped);
+          setAmazonPrice(data.amazonPrice || 0);
+          setAmazonPoints(data.amazonPoints || 0);
+          setAmazonShipping(data.amazonShipping || 0);
+          setAmazonTax(data.amazonTax || 0);
+          // Clear the data after loading
+          localStorage.removeItem('amazonScrapedData');
+          pushToast("✅ Amazon data loaded from scraper!", "success");
+        } catch (e) {
+          console.error("Failed to parse scraped data:", e);
+        }
+      }
+    }
+  });
+
   const calculateProfit = async () => {
     setLoading(true);
     try {

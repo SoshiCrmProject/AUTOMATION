@@ -573,17 +573,62 @@ app.post("/auth/signup", asyncHandler(async (req, res) => {
 // Profit preview endpoint for UI validation
 app.post("/profit/preview", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const schema = z.object({
-    shopeeSalePrice: z.number(),
-    amazonPrice: z.number(),
+    shopeeOrderTotal: z.number().optional(),
+    shopeeShippingFee: z.number().optional(),
+    shopeeFees: z.number().optional(),
+    amazonProductPrice: z.number().optional(),
+    amazonShippingCost: z.number().optional(),
+    amazonTax: z.number().optional(),
     amazonPoints: z.number().optional(),
+    includeDomesticShipping: z.boolean().optional(),
+    domesticShippingCost: z.number().optional(),
+    // Legacy field names for backward compatibility
+    shopeeSalePrice: z.number().optional(),
+    amazonPrice: z.number().optional(),
     domesticShipping: z.number().optional(),
-    includePoints: z.boolean(),
-    includeDomesticShipping: z.boolean()
+    includePoints: z.boolean().optional()
   });
   const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
-  const result = calculateProfit(parsed.data);
-  res.json(result);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid payload", details: parsed.error });
+  
+  const data = parsed.data;
+  
+  // Support both new and legacy field names
+  const shopeeTotal = (data.shopeeOrderTotal || data.shopeeSalePrice || 0) + (data.shopeeShippingFee || 0);
+  const amazonTotal = (data.amazonProductPrice || data.amazonPrice || 0) + 
+                      (data.amazonShippingCost || 0) + 
+                      (data.amazonTax || 0);
+  const fees = data.shopeeFees || 0;
+  const includePoints = data.includePoints !== undefined ? data.includePoints : true;
+  const includeDomestic = data.includeDomesticShipping !== undefined ? data.includeDomesticShipping : false;
+  const domesticShipping = data.domesticShippingCost || data.domesticShipping || 0;
+  const points = (data.amazonPoints || 0);
+  
+  // Calculate profit
+  const shippingCost = includeDomestic ? domesticShipping : 0;
+  const pointsValue = includePoints ? points : 0;
+  const profit = shopeeTotal - amazonTotal - fees - shippingCost + pointsValue;
+  const profitMargin = shopeeTotal > 0 ? (profit / shopeeTotal) * 100 : 0;
+  
+  // Determine if viable (positive profit)
+  const isViable = profit > 0;
+  
+  res.json({
+    profit,
+    profitMargin,
+    shopeeTotal,
+    amazonTotal,
+    fees,
+    shipping: shippingCost,
+    isViable,
+    breakdown: {
+      revenue: shopeeTotal,
+      costs: amazonTotal,
+      fees,
+      domesticShipping: shippingCost,
+      points: pointsValue
+    }
+  });
 }));
 
 // Admin: list users

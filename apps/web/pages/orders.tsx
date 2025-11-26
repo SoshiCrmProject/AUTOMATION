@@ -2,7 +2,7 @@ import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import AppNav from "../components/AppNav";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import api from "../lib/apiClient";
 import Toast, { pushToast } from "../components/Toast";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
@@ -45,12 +45,30 @@ export default function OrdersPage() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [loading, setLoading] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
+  const [autoRefresh, setAutoRefresh] = useState(true);
   
   const { data: orders, error, mutate: refreshOrders } = useSWR<Order[]>(
     "/orders/recent",
     fetcher,
-    { revalidateOnFocus: false }
+    { 
+      revalidateOnFocus: false,
+      refreshInterval: autoRefresh ? 30000 : 0 // Auto-refresh every 30 seconds if enabled
+    }
   );
+
+  // Show notification when orders update
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      const todayProcessed = orders.filter(o => {
+        const updatedToday = new Date(o.updatedAt).toDateString() === new Date().toDateString();
+        return updatedToday && o.processingStatus === "FULFILLED";
+      }).length;
+      
+      if (todayProcessed > (stats.todayProcessed || 0) && todayProcessed > 0) {
+        pushToast(`🎉 ${todayProcessed} orders processed today!`, "success");
+      }
+    }
+  }, [orders]);
 
   const isLoading = !orders && !error;
   const ordersArray = Array.isArray(orders) ? orders : [];
@@ -127,23 +145,39 @@ export default function OrdersPage() {
   };
 
   const handleBulkRetry = async () => {
-    if (selectedOrders.size === 0) {
-      pushToast("No orders selected", "error");
-      return;
-    }
+    if (selectedOrders.size === 0) return;
     
     setLoading(true);
     try {
+      // Retry all selected orders in parallel
       await Promise.all(
         Array.from(selectedOrders).map(id => api.post(`/orders/retry/${id}`))
       );
-      pushToast(`${selectedOrders.size} orders retry initiated`, "success");
+      pushToast(`✅ ${selectedOrders.size} orders queued for retry`, "success");
       setSelectedOrders(new Set());
       refreshOrders();
     } catch (error: any) {
-      pushToast("Some orders failed to retry", "error");
+      pushToast(error.response?.data?.error || "Some retries failed", "error");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const toggleOrderSelection = (orderId: string) => {
+    const newSet = new Set(selectedOrders);
+    if (newSet.has(orderId)) {
+      newSet.delete(orderId);
+    } else {
+      newSet.add(orderId);
+    }
+    setSelectedOrders(newSet);
+  };
+
+  const selectAllVisible = () => {
+    if (selectedOrders.size === filteredOrders.length) {
+      setSelectedOrders(new Set());
+    } else {
+      setSelectedOrders(new Set(filteredOrders.map(o => o.id)));
     }
   };
 
@@ -206,6 +240,13 @@ export default function OrdersPage() {
               </Button>
               <Button onClick={handleExportCSV} variant="ghost">
                 📊 Export CSV
+              </Button>
+              <Button 
+                onClick={() => setAutoRefresh(!autoRefresh)} 
+                variant={autoRefresh ? "primary" : "ghost"}
+                title={autoRefresh ? "Auto-refresh enabled (30s)" : "Auto-refresh disabled"}
+              >
+                {autoRefresh ? "⚡ Live" : "⏸️ Paused"}
               </Button>
             </div>
           </div>
