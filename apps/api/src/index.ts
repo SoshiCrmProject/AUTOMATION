@@ -678,15 +678,6 @@ app.get("/ops/metrics", authMiddleware, requireRole([UserRole.ADMIN]), asyncHand
   res.send(metrics);
 }));
 
-// Global error handler
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-  console.error(err);
-  res.status(500).json({ error: "Internal Server Error" });
-});
-
-const port = process.env.PORT || 4000;
-
 // Mount new enterprise feature routes
 app.use("/api/inventory", authMiddleware, inventoryRoutes);
 app.use("/api/analytics", authMiddleware, analyticsRoutes);
@@ -695,17 +686,16 @@ app.use("/api/notifications", authMiddleware, notificationRoutes);
 app.use("/api/crm", authMiddleware, crmRoutes);
 app.use("/api/returns", authMiddleware, returnsRoutes);
 
-async function bootstrap() {
-  if (SUPERADMIN_EMAIL && SUPERADMIN_PASSWORD) {
-    const existing = await prisma.user.findUnique({ where: { email: SUPERADMIN_EMAIL } });
-    if (!existing) {
-      const hashed = await bcrypt.hash(SUPERADMIN_PASSWORD, 10);
-      await prisma.user.create({
-        data: { email: SUPERADMIN_EMAIL, passwordHash: hashed, role: UserRole.ADMIN, isActive: true }
-      });
-      console.log("Superadmin created");
-    }
-  }
+// Global error handler
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  res.status(500).json({ error: "Internal Server Error" });
+});
+
+// For local development
+if (process.env.NODE_ENV !== 'production') {
+  const port = process.env.PORT || 4000;
   app.listen(port, () => {
     console.log(`🚀 API listening on port ${port}`);
     console.log(`✅ Core endpoints: Authentication, Settings, Orders, Mappings, Admin`);
@@ -713,7 +703,5 @@ async function bootstrap() {
   });
 }
 
-bootstrap().catch((err) => {
-  console.error("Failed to start API", err);
-  process.exit(1);
-});
+// Export for Vercel serverless
+export default app;
