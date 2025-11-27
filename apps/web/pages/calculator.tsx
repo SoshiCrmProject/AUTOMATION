@@ -52,7 +52,7 @@ export default function ProfitCalculatorPage() {
           localStorage.removeItem('amazonScrapedData');
           pushToast(t("amazonDataLoaded"), "success");
         } catch (e) {
-          console.error("Failed to parse scraped data:", e);
+          // Silently ignore invalid scraped data
         }
       }
     }

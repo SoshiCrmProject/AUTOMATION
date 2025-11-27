@@ -1,0 +1,12 @@
+# Shopee-Amazon Automation Platform
+# Production robots.txt
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /admin/
+Disallow: /_next/
+Disallow: /errors
+
+# Sitemap
+Sitemap: https://shopee-amazon-automation.vercel.app/sitemap.xml

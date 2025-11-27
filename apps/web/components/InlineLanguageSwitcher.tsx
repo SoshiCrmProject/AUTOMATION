@@ -10,7 +10,7 @@ export default function InlineLanguageSwitcher() {
       await router.push({ pathname, query }, asPath, { locale: langCode });
       pushToast(langCode === "ja" ? "言語が日本語に変更されました" : "Language changed to English", "success");
     } catch (err) {
-      console.error("Language switch error:", err);
+      // Silently handle language switch errors
     }
   };
 

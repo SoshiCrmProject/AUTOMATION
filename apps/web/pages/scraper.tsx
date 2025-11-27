@@ -61,7 +61,7 @@ export default function ProductScraperPage() {
           });
           pushToast(t("scrapingComplete"), "success");
         } catch (err: any) {
-          console.error("Demo error:", err);
+          // Demo mode - silently handle errors
         }
       }, 3000);
       
