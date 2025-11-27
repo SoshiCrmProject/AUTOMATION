@@ -1,13 +1,43 @@
 module.exports = {
-  preset: 'ts-jest',
-  testEnvironment: 'jsdom',
-  roots: ['<rootDir>/apps', '<rootDir>/packages'],
-  testMatch: ['**/__tests__/**/*.ts?(x)', '**/?(*.)+(spec|test).ts?(x)'],
-  moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx', 'json'],
-  moduleNameMapper: {
-    '^@/(.*)$': '<rootDir>/apps/web/$1',
-    '^@shopee-amazon/shared$': '<rootDir>/packages/shared/src',
-  },
+  projects: [
+    {
+      displayName: 'web',
+      testMatch: ['<rootDir>/apps/web/**/*.test.tsx'],
+      testEnvironment: 'jsdom',
+      preset: 'ts-jest',
+      setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+      moduleNameMapper: {
+        '^@/(.*)$': '<rootDir>/apps/web/$1',
+        '^@shopee-amazon/shared$': '<rootDir>/packages/shared/src',
+      },
+      transform: {
+        '^.+\\.tsx?$': ['ts-jest', {
+          tsconfig: {
+            jsx: 'react',
+            esModuleInterop: true,
+            allowSyntheticDefaultImports: true,
+          },
+        }],
+      },
+    },
+    {
+      displayName: 'api',
+      testMatch: ['<rootDir>/apps/api/**/*.test.ts', '<rootDir>/packages/**/*.test.ts'],
+      testEnvironment: 'node',
+      preset: 'ts-jest',
+      moduleNameMapper: {
+        '^@shopee-amazon/shared$': '<rootDir>/packages/shared/src',
+      },
+      transform: {
+        '^.+\\.ts$': ['ts-jest', {
+          tsconfig: {
+            esModuleInterop: true,
+            allowSyntheticDefaultImports: true,
+          },
+        }],
+      },
+    },
+  ],
   collectCoverageFrom: [
     'apps/**/*.{ts,tsx}',
     'packages/**/*.{ts,tsx}',
@@ -23,15 +53,5 @@ module.exports = {
       functions: 60,
       lines: 60,
     },
-  },
-  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  transform: {
-    '^.+\\.tsx?$': ['ts-jest', {
-      tsconfig: {
-        jsx: 'react',
-        esModuleInterop: true,
-        allowSyntheticDefaultImports: true,
-      },
-    }],
   },
 };
