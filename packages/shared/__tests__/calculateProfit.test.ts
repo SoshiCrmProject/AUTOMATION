@@ -3,81 +3,81 @@ import { calculateProfit } from '../src/index';
 describe('calculateProfit', () => {
   it('should calculate positive profit correctly', () => {
     const result = calculateProfit({
-      shopeePrice: 5000,
+      shopeeSalePrice: 5000,
       amazonPrice: 3000,
-      shopeeFee: 500,
-      domesticShipping: 200,
       amazonPoints: 0,
+      domesticShipping: 200,
+      includePoints: false,
+      includeDomesticShipping: true
     });
 
-    expect(result.profit).toBe(1300); // 5000 - 3000 - 500 - 200
-    expect(result.profitMargin).toBeCloseTo(26, 0);
-    expect(result.isViable).toBe(true);
+    expect(result.expectedProfit).toBe(1800);
+    expect(result.breakdown.base).toBe(2000);
   });
 
-  it('should calculate negative profit (not viable)', () => {
+  it('should calculate negative profit', () => {
     const result = calculateProfit({
-      shopeePrice: 2000,
+      shopeeSalePrice: 2000,
       amazonPrice: 3000,
-      shopeeFee: 300,
-      domesticShipping: 200,
       amazonPoints: 0,
+      domesticShipping: 200,
+      includePoints: false,
+      includeDomesticShipping: true
     });
 
-    expect(result.profit).toBe(-1500); // 2000 - 3000 - 300 - 200
-    expect(result.isViable).toBe(false);
+    expect(result.expectedProfit).toBe(-1200);
   });
 
-  it('should include Amazon points in calculation', () => {
+  it('should include Amazon points', () => {
     const result = calculateProfit({
-      shopeePrice: 5000,
+      shopeeSalePrice: 5000,
       amazonPrice: 3000,
-      shopeeFee: 500,
-      domesticShipping: 200,
       amazonPoints: 300,
+      domesticShipping: 200,
+      includePoints: true,
+      includeDomesticShipping: true
     });
 
-    expect(result.profit).toBe(1600); // 5000 - 3000 - 500 - 200 + 300
-    expect(result.isViable).toBe(true);
+    expect(result.expectedProfit).toBe(2100);
+    expect(result.breakdown.points).toBe(300);
   });
 
   it('should handle zero fees', () => {
     const result = calculateProfit({
-      shopeePrice: 5000,
+      shopeeSalePrice: 5000,
       amazonPrice: 3000,
-      shopeeFee: 0,
-      domesticShipping: 0,
       amazonPoints: 0,
+      domesticShipping: 0,
+      includePoints: false,
+      includeDomesticShipping: false
     });
 
-    expect(result.profit).toBe(2000);
-    expect(result.profitMargin).toBe(40);
+    expect(result.expectedProfit).toBe(2000);
   });
 
-  it('should calculate profit margin correctly', () => {
+  it('should calculate with all options', () => {
     const result = calculateProfit({
-      shopeePrice: 10000,
+      shopeeSalePrice: 10000,
       amazonPrice: 5000,
-      shopeeFee: 1000,
-      domesticShipping: 500,
-      amazonPoints: 0,
+      amazonPoints: 500,
+      domesticShipping: 1000,
+      includePoints: true,
+      includeDomesticShipping: true
     });
 
-    expect(result.profit).toBe(3500);
-    expect(result.profitMargin).toBe(35); // (3500 / 10000) * 100
+    expect(result.expectedProfit).toBe(4500);
   });
 
-  it('should handle edge case with zero Shopee price', () => {
+  it('should handle edge case with zero sale price', () => {
     const result = calculateProfit({
-      shopeePrice: 0,
+      shopeeSalePrice: 0,
       amazonPrice: 1000,
-      shopeeFee: 0,
-      domesticShipping: 0,
       amazonPoints: 0,
+      domesticShipping: 0,
+      includePoints: false,
+      includeDomesticShipping: false
     });
 
-    expect(result.profit).toBe(-1000);
-    expect(result.profitMargin).toBe(0);
-    expect(result.isViable).toBe(false);
+    expect(result.expectedProfit).toBe(-1000);
   });
 });
