@@ -440,7 +440,7 @@ export default function SettingsPage() {
               
               {/* Help Instructions */}
               <div style={{ marginBottom: 24 }}>
-                <Alert variant="info" title="📚 How to Get Shopee Credentials">
+                <Alert variant="info" title={`📚 ${t("howToGetShopeeCredentials")}`}>
                   <ol style={{ margin: "8px 0", paddingLeft: 20, lineHeight: 1.8 }}>
                     <li>Go to <strong>https://open.shopee.com/</strong></li>
                     <li>Register and create a new app</li>
@@ -479,7 +479,7 @@ export default function SettingsPage() {
               {/* Validation Status */}
               {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
                 <div style={{ marginBottom: 16 }}>
-                  <Alert variant="success" title="✅ All fields filled">
+                  <Alert variant="success" title={`✅ ${t("allFieldsFilled")}`}>
                     Ready to save. Click the button below to securely store your credentials.
                   </Alert>
                 </div>
@@ -515,14 +515,14 @@ export default function SettingsPage() {
             <div style={{ marginTop: 24 }}>
               <h3 style={{ marginTop: 0, marginBottom: 16 }}>📦 Amazon Seller Credentials</h3>
               <div style={{ marginBottom: 24 }}>
-                <Alert variant="warning" title="🔒 Security Notice">
+                <Alert variant="warning" title={`🔒 ${t("securityNotice")}`}>
                   These credentials are encrypted (AES-256-GCM) and used only for automated browser login.
                   Never shared with third parties.
                 </Alert>
               </div>
               
               <div style={{ marginBottom: 16 }}>
-                <Alert variant="info" title="ℹ️ What This Does">
+                <Alert variant="info" title={`ℹ️ ${t("whatThisDoes")}`}>
                   Our system uses Playwright to automate Amazon purchases. We need your login to:
                   <ul style={{ margin: "8px 0", paddingLeft: 20 }}>
                     <li>Check product availability and prices</li>

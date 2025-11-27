@@ -244,9 +244,9 @@ export default function OrdersPage() {
               <Button 
                 onClick={() => setAutoRefresh(!autoRefresh)} 
                 variant={autoRefresh ? "primary" : "ghost"}
-                title={autoRefresh ? "Auto-refresh enabled (30s)" : "Auto-refresh disabled"}
+                title={autoRefresh ? t("autoRefreshEnabled") : t("autoRefreshDisabled")}
               >
-                {autoRefresh ? "⚡ Live" : "⏸️ Paused"}
+                {autoRefresh ? `⚡ ${t("live")}` : `⏸️ ${t("paused")}`}
               </Button>
             </div>
           </div>
@@ -443,7 +443,7 @@ export default function OrdersPage() {
             ) : (
               <EmptyState
                 icon="📦"
-                title="No Orders Found"
+                title={t("noOrdersFound")}
                 description="Try adjusting your filters or search term"
               />
             )}
@@ -493,7 +493,7 @@ export default function OrdersPage() {
                     </div>
                   </div>
                   <div>
-                    <label className="label">Created At</label>
+                    <label className="label">{t("createdAt")}</label>
                     <div style={{ fontSize: 14 }}>
                       {new Date(selectedOrder.createdAt).toLocaleString()}
                     </div>

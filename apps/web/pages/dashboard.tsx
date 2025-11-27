@@ -113,7 +113,7 @@ export default function Dashboard() {
                 <option value="90d">Last 90 days</option>
               </select>
               <Button onClick={() => window.location.reload()}>
-                🔄 Refresh
+                🔄 {t("refreshData")}
               </Button>
             </div>
           </div>
@@ -121,13 +121,13 @@ export default function Dashboard() {
 
         {/* System Health Alert */}
         {health && (
-          <Alert variant="success" title="System Operational">
+          <Alert variant="success" title={t("systemOperational")}>
             All services are running normally. Queue: {queue?.waiting || 0} waiting, {queue?.active || 0} active, {queue?.failed || 0} failed
           </Alert>
         )}
 
         {!health && (
-          <Alert variant="error" title="System Issues Detected">
+          <Alert variant="error" title={t("systemIssuesDetected")}>
             Unable to connect to backend services. Please check your connection.
           </Alert>
         )}
@@ -171,12 +171,12 @@ export default function Dashboard() {
             {/* Charts Section */}
             <div className="grid grid-2" style={{ marginBottom: '32px' }}>
               <Card>
-                <CardHeader title="Order Status Distribution" icon="📊" />
+                <CardHeader title={t("orderStatusDistribution")} icon="📊" />
                 <SimpleBarChart data={statusChartData} height="250px" />
               </Card>
 
               <Card>
-                <CardHeader title="Orders Trend" icon="📈" />
+                <CardHeader title={t("ordersTrend")} icon="📈" />
                 <TrendLine data={trendData} height="250px" showDots />
               </Card>
             </div>
@@ -321,13 +321,13 @@ export default function Dashboard() {
               </div>
               
               {selectedOrder.amazonOrder && (
-                <Alert variant="success" title="Amazon Order">
+                <Alert variant="success" title={t("amazonOrder")}>
                   Amazon Order ID: {selectedOrder.amazonOrder.amazonOrderId || 'Processing...'}
                 </Alert>
               )}
               
               {selectedOrder.errorItems && selectedOrder.errorItems.length > 0 && (
-                <Alert variant="error" title="Errors Detected">
+                <Alert variant="error" title={t("errorsDetected")}>
                   {selectedOrder.errorItems.length} error(s) found for this order
                 </Alert>
               )}

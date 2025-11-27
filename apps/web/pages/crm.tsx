@@ -409,7 +409,7 @@ export default function CRM() {
             ) : (
               <EmptyState
                 icon="👥"
-                title="No Customers Found"
+                title={t("noCustomersFound")}
                 description="Try adjusting your filters or search term"
               />
             )}
@@ -497,7 +497,7 @@ export default function CRM() {
                   fullWidth
                   style={{ marginBottom: 16 }}
                 >
-                  + Add Interaction
+                  + {t("addInteraction")}
                 </Button>
                 {interactions && interactions.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -537,7 +537,7 @@ export default function CRM() {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState icon="💬" title="No Interactions" description="Add the first interaction" />
+                  <EmptyState icon="💬" title={t("noInteractions")} description={t("addFirstInteraction")} />
                 )}
               </div>
             )}
@@ -579,7 +579,7 @@ export default function CRM() {
                     ))}
                   </div>
                 ) : (
-                  <EmptyState icon="🏆" title="No Loyalty History" description="Loyalty changes will appear here" />
+                  <EmptyState icon="🏆" title={t("noLoyaltyHistory")} description={t("loyaltyChangesAppear")} />
                 )}
               </div>
             )}
@@ -593,7 +593,7 @@ export default function CRM() {
             setShowAddInteractionModal(false);
             setInteractionDesc("");
           }}
-          title="Add Customer Interaction"
+          title={t("addCustomerInteraction")}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Select
@@ -621,10 +621,10 @@ export default function CRM() {
             </div>
             <div style={{ display: "flex", gap: 12 }}>
               <Button onClick={handleAddInteraction} variant="primary" fullWidth disabled={loading}>
-                Add Interaction
+                {t("addInteraction")}
               </Button>
               <Button onClick={() => setShowAddInteractionModal(false)} variant="ghost" fullWidth>
-                Cancel
+                {t("cancel")}
               </Button>
             </div>
           </div>
@@ -637,7 +637,7 @@ export default function CRM() {
             setShowLoyaltyModal(false);
             setLoyaltyReason("");
           }}
-          title="Update Loyalty Tier"
+          title={t("updateLoyaltyTier")}
         >
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Select

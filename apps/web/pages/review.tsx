@@ -169,11 +169,11 @@ export default function ReviewPage() {
         <Card>
           <CardHeader 
             title="⚠️ Manual Review Queue" 
-            subtitle="Orders requiring manual attention"
+            subtitle={t("ordersRequiringAttention")}
             icon="👁️"
           />
           {reviewError && (
-            <Alert variant="error" title="Error Loading Review Items">
+            <Alert variant="error" title={t("errorLoadingReviewItems")}>
               {reviewError.message}
             </Alert>
           )}
@@ -230,7 +230,7 @@ export default function ReviewPage() {
         <Card>
           <CardHeader 
             title="🔄 Returns Management" 
-            subtitle="Manage customer return requests and refunds"
+            subtitle={t("manageReturns")}
             icon="💰"
           />
           
@@ -462,7 +462,7 @@ export default function ReviewPage() {
               ) : (
                 <EmptyState
                   icon="🔄"
-                  title="No Returns Found"
+                  title={t("noReturnsFound")}
                   description="Return requests will appear here when customers initiate returns"
                 />
               )}
@@ -552,7 +552,7 @@ export default function ReviewPage() {
           setSelectedReturn(null);
           setProcessNotes("");
         }}
-        title="Process Return Request"
+        title={t("processReturnRequest")}
       >
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {selectedReturn && (
@@ -606,7 +606,7 @@ export default function ReviewPage() {
               variant="ghost"
               fullWidth
             >
-              Cancel
+              {t("cancel")}
             </Button>
           </div>
         </div>

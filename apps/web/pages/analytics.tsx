@@ -135,12 +135,12 @@ export default function Analytics() {
                 className="select"
                 style={{ width: 'auto', marginBottom: 0 }}
               >
-                <option value="7">Last 7 days</option>
-                <option value="30">Last 30 days</option>
-                <option value="90">Last 90 days</option>
+                <option value="7">{t("last7Days")}</option>
+                <option value="30">{t("last30Days")}</option>
+                <option value="90">{t("last90Days")}</option>
               </select>
               <Button onClick={() => window.location.reload()} variant="ghost">
-                🔄 Refresh
+                🔄 {t("refreshData")}
               </Button>
             </div>
           </div>
@@ -148,7 +148,7 @@ export default function Analytics() {
 
         {/* Alert Messages */}
         {dashboard?.alerts && (dashboard.alerts.lowStock > 0 || dashboard.alerts.errors > 0) && (
-          <Alert variant="warning" title="Attention Required">
+          <Alert variant="warning" title={t("attentionRequired")}>
             {dashboard.alerts.lowStock > 0 && `${dashboard.alerts.lowStock} products low on stock. `}
             {dashboard.alerts.errors > 0 && `${dashboard.alerts.errors} errors in the last 7 days. `}
             {dashboard.alerts.returns > 0 && `${dashboard.alerts.returns} pending returns.`}
@@ -156,38 +156,38 @@ export default function Analytics() {
         )}
 
         {isLoading ? (
-          <LoadingSpinner size="lg" text="Loading analytics data..." />
+          <LoadingSpinner size="lg" text={t("loadingAnalyticsData")} />
         ) : dashError ? (
-          <Alert variant="error" title="Failed to Load Data">
-            Unable to fetch analytics. Please try again later.
+          <Alert variant="error" title={t("failedToLoadData")}>
+            {t("unableToFetchAnalytics")}
           </Alert>
         ) : (
           <div>
             {/* Key Metrics Cards */}
             <div className="grid grid-4" style={{ marginBottom: '32px' }}>
               <StatCard 
-                label="Weekly Revenue"
+                label={t("weeklyRevenue")}
                 value={`¥${Number(weekRevenue).toLocaleString()}`}
                 trend={8}
                 icon="💰"
                 color="success"
               />
               <StatCard 
-                label="Weekly Orders"
+                label={t("weeklyOrders")}
                 value={weekOrders}
                 trend={12}
                 icon="📦"
                 color="primary"
               />
               <StatCard 
-                label="Weekly Profit"
+                label={t("weeklyProfit")}
                 value={`¥${Number(weekProfit).toLocaleString()}`}
                 trend={6}
                 icon="📈"
                 color="info"
               />
               <StatCard 
-                label="Conversion Rate"
+                label={t("conversionRate")}
                 value={`${(weekConversionRate * 100).toFixed(1)}%`}
                 trend={-2}
                 icon="⚡"
@@ -198,14 +198,14 @@ export default function Analytics() {
             {/* Monthly Overview */}
             <Card>
               <CardHeader 
-                title="Monthly Overview" 
-                subtitle="Last 30 days performance"
+                title={t("monthlyOverview")}
+                subtitle={t("last30DaysPerformance")}
                 icon="📅" 
               />
               <div className="grid grid-3" style={{ gap: '24px', padding: '16px 0' }}>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
-                    Total Orders
+                    {t("totalOrders")}
                   </div>
                   <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-primary)' }}>
                     {monthOrders.toLocaleString()}
@@ -213,7 +213,7 @@ export default function Analytics() {
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
-                    Total Revenue
+                    {t("totalRevenue")}
                   </div>
                   <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-success)' }}>
                     ¥{Number(monthRevenue).toLocaleString()}
@@ -221,7 +221,7 @@ export default function Analytics() {
                 </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
-                    Total Profit
+                    {t("totalProfit")}
                   </div>
                   <div style={{ fontSize: '32px', fontWeight: 700, color: 'var(--color-info)' }}>
                     ¥{Number(monthProfit).toLocaleString()}
@@ -235,15 +235,15 @@ export default function Analytics() {
               <div style={{ marginTop: '32px' }}>
                 <Card>
                   <CardHeader 
-                    title="📈 Revenue & Profit Analytics" 
-                    subtitle={`Interactive charts for last ${selectedPeriod} days`}
+                    title={t("revenueAndProfitAnalytics")}
+                    subtitle={t("interactiveCharts").replace('{days}', selectedPeriod)}
                     icon="📊" 
                   />
                   
                   {/* Revenue & Profit Line Chart */}
                   <div style={{ padding: '20px 0', marginBottom: '32px' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
-                      Revenue vs Profit Trend
+                      {t("revenueVsProfitTrend")}
                     </h4>
                     <ResponsiveContainer width="100%" height={300}>
                       <AreaChart data={chartData}>
@@ -282,7 +282,7 @@ export default function Analytics() {
                   {/* Orders Bar Chart */}
                   <div style={{ padding: '20px 0', marginBottom: '32px' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
-                      Daily Order Volume
+                      {t("dailyOrderVolume")}
                     </h4>
                     <ResponsiveContainer width="100%" height={250}>
                       <BarChart data={chartData}>
@@ -305,7 +305,7 @@ export default function Analytics() {
                   {/* Success Rate Chart */}
                   <div style={{ padding: '20px 0' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
-                      Order Success Rate Trend
+                      {t("orderSuccessRateTrend")}
                     </h4>
                     <ResponsiveContainer width="100%" height={250}>
                       <LineChart data={chartData}>
@@ -336,17 +336,17 @@ export default function Analytics() {
                   {/* Data Table */}
                   <div style={{ padding: '20px', borderTop: '1px solid var(--color-border)' }}>
                     <h4 style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '16px' }}>
-                      Detailed Breakdown
+                      {t("detailedBreakdown")}
                     </h4>
                     <div style={{ overflowX: 'auto' }}>
                       <table style={{ width: '100%', fontSize: '13px' }}>
                         <thead>
                           <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
-                            <th style={{ padding: '12px', textAlign: 'left' }}>Date</th>
-                            <th style={{ padding: '12px', textAlign: 'right' }}>Orders</th>
-                            <th style={{ padding: '12px', textAlign: 'right' }}>Revenue</th>
-                            <th style={{ padding: '12px', textAlign: 'right' }}>Profit</th>
-                            <th style={{ padding: '12px', textAlign: 'right' }}>Success Rate</th>
+                            <th style={{ padding: '12px', textAlign: 'left' }}>{t("date")}</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>{t("orders")}</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>{t("revenue")}</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>{t("profit")}</th>
+                            <th style={{ padding: '12px', textAlign: 'right' }}>{t("successRate")}</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -381,8 +381,8 @@ export default function Analytics() {
             <div style={{ marginTop: '32px' }}>
               <Card>
                 <CardHeader 
-                  title="AI-Powered Insights" 
-                  subtitle="Data-driven recommendations"
+                  title={t("aiPoweredInsights")}
+                  subtitle={t("dataDrivenRecommendations")}
                   icon="💡" 
                 />
                 <div style={{ padding: '16px 0' }}>

@@ -254,60 +254,60 @@ export default function Inventory() {
 
         {/* Shop Selection */}
         {!shopId && (
-          <Alert variant="info" title="Select Shop">
-            Enter your Shop ID to view and manage inventory
+          <Alert variant="info" title={t("selectShop")}>
+            {t("enterShopIDToManageInventory")}
           </Alert>
         )}
 
         <div style={{ marginBottom: '24px' }}>
           <Input
-            label="Shop ID"
+            label={t("shopID")}
             value={shopId}
             onChange={(e) => setShopId(e.target.value)}
-            placeholder="Enter your Shop ID"
-            hint="You can find this in your shop settings"
+            placeholder={t("enterYourShopID")}
+            hint={t("shopIDHint")}
           />
         </div>
 
         {/* Alert Messages */}
         {alerts.length > 0 && (
-          <Alert variant="warning" title={`${alerts.length} Low Stock Alerts`}>
-            You have products that need attention. Check the alerts tab below.
+          <Alert variant="warning" title={`${alerts.length} ${t("lowStockAlerts")}`}>
+            {t("productsNeedAttention")}
           </Alert>
         )}
 
         {shopId && (
           <>
             {isLoading ? (
-              <LoadingSpinner size="lg" text="Loading inventory..." />
+              <LoadingSpinner size="lg" text={t("loadingInventory")} />
             ) : invError ? (
-              <Alert variant="error" title="Failed to Load Inventory">
-                {invError.message || "Unable to fetch inventory data"}
+              <Alert variant="error" title={t("failedToLoadInventory")}>
+                {invError.message || t("unableToFetchInventoryData")}
               </Alert>
             ) : (
               <>
                 {/* Stats Cards */}
                 <div className="grid grid-4" style={{ marginBottom: '32px' }}>
                   <StatCard 
-                    label="Total Products"
+                    label={t("totalProducts")}
                     value={totalProducts}
                     icon="📦"
                     color="primary"
                   />
                   <StatCard 
-                    label="Total Stock"
+                    label={t("totalStock")}
                     value={totalStock}
                     icon="📊"
                     color="info"
                   />
                   <StatCard 
-                    label="Low Stock"
+                    label={t("lowStock")}
                     value={lowStockCount}
                     icon="⚠️"
                     color="warning"
                   />
                   <StatCard 
-                    label="Out of Stock"
+                    label={t("outOfStock")}
                     value={outOfStockCount}
                     icon="🚫"
                     color="error"
@@ -317,29 +317,29 @@ export default function Inventory() {
                 {/* Filters */}
                 <div style={{ marginBottom: '24px' }}>
                   <Card>
-                  <CardHeader title="Filters" icon="🔍" />
+                  <CardHeader title={t("filters")} icon="🔍" />
                   <div className="grid grid-3" style={{ gap: '16px' }}>
                     <Input
-                      label="Search"
+                      label={t("search")}
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder="Product name or SKU..."
+                      placeholder={t("searchProductOrSKU")}
                     />
                     <Select
-                      label="Status"
+                      label={t("status")}
                       value={filterStatus}
                       onChange={(e) => setFilterStatus(e.target.value)}
                       options={[
-                        { value: "all", label: "All Status" },
-                        { value: "IN_STOCK", label: "In Stock" },
-                        { value: "LOW_STOCK", label: "Low Stock" },
-                        { value: "OUT_OF_STOCK", label: "Out of Stock" },
-                        { value: "DISCONTINUED", label: "Discontinued" },
+                        { value: "all", label: t("allStatus") },
+                        { value: "IN_STOCK", label: t("inStock") },
+                        { value: "LOW_STOCK", label: t("lowStock") },
+                        { value: "OUT_OF_STOCK", label: t("outOfStock") },
+                        { value: "DISCONTINUED", label: t("discontinued") },
                       ]}
                     />
                     <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
                       <Button onClick={() => { setSearchTerm(""); setFilterStatus("all"); }} variant="ghost" fullWidth>
-                        Clear Filters
+                        {t("clearFilters")}
                       </Button>
                     </div>
                   </div>
@@ -353,7 +353,7 @@ export default function Inventory() {
                     tabs={[
                       {
                         id: 'products',
-                        label: 'Products',
+                        label: t("products"),
                         icon: '📦',
                         badge: filteredInventory.length,
                         content: (
@@ -361,11 +361,11 @@ export default function Inventory() {
                             {filteredInventory.length > 0 ? (
                               <Table
                                 columns={[
-                                  { key: 'sku', header: 'SKU', width: '120px' },
-                                  { key: 'productName', header: 'Product Name' },
+                                  { key: 'sku', header: t("sku"), width: '120px' },
+                                  { key: 'productName', header: t("productName") },
                                   { 
                                     key: 'status', 
-                                    header: 'Status',
+                                    header: t("status"),
                                     width: '120px',
                                     render: (row) => (
                                       <Badge variant={
@@ -379,7 +379,7 @@ export default function Inventory() {
                                   },
                                   { 
                                     key: 'currentStock', 
-                                    header: 'Stock',
+                                    header: t("stock"),
                                     width: '100px',
                                     render: (row) => (
                                       <span style={{ 
@@ -392,19 +392,19 @@ export default function Inventory() {
                                   },
                                   { 
                                     key: 'available', 
-                                    header: 'Available',
+                                    header: t("available"),
                                     width: '100px',
                                     render: (row) => row.availableStock
                                   },
                                   { 
                                     key: 'location', 
-                                    header: 'Location',
+                                    header: t("location"),
                                     width: '120px',
                                     render: (row) => row.location || '-'
                                   },
                                   {
                                     key: 'actions',
-                                    header: 'Actions',
+                                    header: t("actions"),
                                     width: '150px',
                                     render: (row) => (
                                       <div style={{ display: 'flex', gap: '8px' }}>
@@ -416,27 +416,27 @@ export default function Inventory() {
                                             setShowAdjustModal(true);
                                           }}
                                         >
-                                          Adjust
+                                          {t("adjust")}
                                         </Button>
                                       </div>
                                     )
                                   }
                                 ]}
                                 data={filteredInventory}
-                                emptyMessage="No products found"
+                                emptyMessage={t("noProductsFound")}
                               />
                             ) : (
                               <div style={{ padding: '60px', textAlign: 'center' }}>
                                 <div style={{ fontSize: '64px', marginBottom: '16px' }}>📦</div>
-                                <h3 style={{ marginBottom: '8px' }}>No products found</h3>
+                                <h3 style={{ marginBottom: '8px' }}>{t("noProductsFound")}</h3>
                                 <p style={{ color: 'var(--color-text-muted)', marginBottom: '24px' }}>
                                   {searchTerm || filterStatus !== 'all' 
-                                    ? 'Try adjusting your filters'
-                                    : 'Add your first product to get started'}
+                                    ? t("tryAdjustingFilters")
+                                    : t("addFirstProductToStart")}
                                 </p>
                                 {!searchTerm && filterStatus === 'all' && (
                                   <Button onClick={() => setShowAddModal(true)}>
-                                    ➕ Add Product
+                                    ➕ {t("addProduct")}
                                   </Button>
                                 )}
                               </div>
@@ -446,7 +446,7 @@ export default function Inventory() {
                       },
                       {
                         id: 'alerts',
-                        label: 'Alerts',
+                        label: t("alerts"),
                         icon: '🔔',
                         badge: alerts.filter(a => !a.acknowledged).length,
                         content: (
@@ -456,7 +456,7 @@ export default function Inventory() {
                                 columns={[
                                   { 
                                     key: 'productId', 
-                                    header: 'Product',
+                                    header: t("product"),
                                     render: (row) => {
                                       const product = inventory.find(p => p.id === row.productId);
                                       return product?.productName || row.productId;
@@ -464,7 +464,7 @@ export default function Inventory() {
                                   },
                                   { 
                                     key: 'currentQty', 
-                                    header: 'Current Stock',
+                                    header: t("currentStock"),
                                     width: '120px',
                                     render: (row) => (
                                       <Badge variant="error">{row.currentQty}</Badge>
@@ -472,12 +472,12 @@ export default function Inventory() {
                                   },
                                   { 
                                     key: 'threshold', 
-                                    header: 'Threshold',
+                                    header: t("threshold"),
                                     width: '100px'
                                   },
                                   { 
                                     key: 'notifiedAt', 
-                                    header: 'Date',
+                                    header: t("date"),
                                     width: '150px',
                                     render: (row) => new Date(row.notifiedAt).toLocaleDateString()
                                   },
@@ -487,7 +487,7 @@ export default function Inventory() {
                                     width: '120px',
                                     render: (row) => (
                                       <Badge variant={row.acknowledged ? 'info' : 'warning'}>
-                                        {row.acknowledged ? 'Acknowledged' : 'New'}
+                                        {row.acknowledged ? t("acknowledged") : t("new")}
                                       </Badge>
                                     )
                                   },
@@ -503,7 +503,7 @@ export default function Inventory() {
                                             variant="ghost"
                                             onClick={() => handleAcknowledgeAlert(row.id)}
                                           >
-                                            Ack
+                                            {t("acknowledge")}
                                           </Button>
                                         )}
                                         {!row.resolvedAt && (
@@ -512,7 +512,7 @@ export default function Inventory() {
                                             variant="success"
                                             onClick={() => handleResolveAlert(row.id)}
                                           >
-                                            Resolve
+                                            {t("resolve")}
                                           </Button>
                                         )}
                                       </div>
@@ -520,14 +520,14 @@ export default function Inventory() {
                                   }
                                 ]}
                                 data={alerts}
-                                emptyMessage="No alerts"
+                                emptyMessage={t("noAlerts")}
                               />
                             ) : (
                               <div style={{ padding: '60px', textAlign: 'center' }}>
                                 <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
-                                <h3 style={{ marginBottom: '8px' }}>No alerts</h3>
+                                <h3 style={{ marginBottom: '8px' }}>{t("noAlerts")}</h3>
                                 <p style={{ color: 'var(--color-text-muted)' }}>
-                                  All products are well-stocked!
+                                  {t("allProductsWellStocked")}
                                 </p>
                               </div>
                             )}
@@ -536,15 +536,15 @@ export default function Inventory() {
                       },
                       {
                         id: 'stats',
-                        label: 'Statistics',
+                        label: t("statistics"),
                         icon: '📊',
                         content: (
                           <div style={{ padding: '24px' }}>
-                            <h3 style={{ marginTop: 0, marginBottom: '24px' }}>Inventory Statistics</h3>
+                            <h3 style={{ marginTop: 0, marginBottom: '24px' }}>{t("inventoryStatistics")}</h3>
                             
                             <div className="grid grid-2" style={{ marginBottom: '32px' }}>
                               <Card>
-                                <CardHeader title="Stock Overview" icon="📦" />
+                                <CardHeader title={t("stockOverview")} icon="📦" />
                                 <div style={{ padding: '16px' }}>
                                   <div style={{ marginBottom: '16px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -564,21 +564,21 @@ export default function Inventory() {
                               </Card>
 
                               <Card>
-                                <CardHeader title="Product Status" icon="📋" />
+                                <CardHeader title={t("productStatus")} icon="📋" />
                                 <div style={{ padding: '16px' }}>
                                   <div style={{ marginBottom: '16px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>In Stock</span>
+                                      <span>{t("inStock")}</span>
                                       <Badge variant="success">
                                         {inventory.filter(i => i.status === 'IN_STOCK').length}
                                       </Badge>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>Low Stock</span>
+                                      <span>{t("lowStock")}</span>
                                       <Badge variant="warning">{lowStockCount}</Badge>
                                     </div>
                                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <span>Out of Stock</span>
+                                      <span>{t("outOfStock")}</span>
                                       <Badge variant="error">{outOfStockCount}</Badge>
                                     </div>
                                   </div>
@@ -586,14 +586,14 @@ export default function Inventory() {
                               </Card>
                             </div>
 
-                            <Alert variant="info" title="Inventory Health">
+                            <Alert variant="info" title={t("inventoryHealth")}>
                               {outOfStockCount === 0 && lowStockCount === 0 ? (
-                                'Your inventory is in good shape! All products are well-stocked.'
+                                t("inventoryInGoodShape")
                               ) : (
                                 <>
-                                  {outOfStockCount > 0 && `${outOfStockCount} products are out of stock. `}
-                                  {lowStockCount > 0 && `${lowStockCount} products are running low. `}
-                                  Consider restocking soon to avoid fulfillment delays.
+                                  {outOfStockCount > 0 && `${outOfStockCount} ${t("productsOutOfStock")} `}
+                                  {lowStockCount > 0 && `${lowStockCount} ${t("productsRunningLow")} `}
+                                  {t("considerRestocking")}
                                 </>
                               )}
                             </Alert>
@@ -620,7 +620,7 @@ export default function Inventory() {
             setAdjustQuantity(0);
             setAdjustReason("");
           }}
-          title="Adjust Stock"
+          title={t("adjustStock")}
           size="md"
         >
           <div style={{ padding: '24px' }}>
@@ -628,39 +628,39 @@ export default function Inventory() {
               {selectedProduct.productName}
             </h4>
             <p style={{ color: 'var(--color-text-muted)', marginBottom: '24px' }}>
-              Current Stock: <strong>{selectedProduct.currentStock}</strong>
+              {t("currentStock")}: <strong>{selectedProduct.currentStock}</strong>
             </p>
 
             <Select
-              label="Adjustment Type"
+              label={t("adjustmentType")}
               value={adjustType}
               onChange={(e) => setAdjustType(e.target.value as any)}
               options={[
-                { value: "IN", label: "Stock In (Add)" },
-                { value: "OUT", label: "Stock Out (Remove)" },
-                { value: "ADJUSTMENT", label: "Adjustment (Correct)" },
+                { value: "IN", label: t("stockIn") },
+                { value: "OUT", label: t("stockOut") },
+                { value: "ADJUSTMENT", label: t("adjustment") },
               ]}
             />
 
             <Input
-              label="Quantity"
+              label={t("quantity")}
               type="number"
               value={adjustQuantity}
               onChange={(e) => setAdjustQuantity(Number(e.target.value))}
-              placeholder="Enter quantity"
-              hint={`New stock will be: ${selectedProduct.currentStock + (adjustType === 'OUT' ? -adjustQuantity : adjustQuantity)}`}
+              placeholder={t("enterQuantity")}
+              hint={`${t("newStockWillBe")}: ${selectedProduct.currentStock + (adjustType === 'OUT' ? -adjustQuantity : adjustQuantity)}`}
             />
 
             <Input
-              label="Reason (Optional)"
+              label={t("reasonOptional")}
               value={adjustReason}
               onChange={(e) => setAdjustReason(e.target.value)}
-              placeholder="e.g., Damaged, Returned, Restock..."
+              placeholder={t("reasonPlaceholder")}
             />
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <Button onClick={handleStockAdjust} disabled={loading || adjustQuantity === 0} fullWidth>
-                {loading ? 'Adjusting...' : 'Confirm Adjustment'}
+                {loading ? t("adjusting") : t("confirmAdjustment")}
               </Button>
               <Button 
                 onClick={() => {
@@ -682,74 +682,74 @@ export default function Inventory() {
         <Modal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
-          title="Add New Product"
+          title={t("addNewProduct")}
           size="lg"
         >
           <div style={{ padding: '24px' }}>
             <div className="grid grid-2" style={{ gap: '16px' }}>
               <Input
-                label="Shopee Item ID *"
+                label={`${t("shopeeItemID")} *`}
                 value={newProduct.shopeeItemId}
                 onChange={(e) => setNewProduct({...newProduct, shopeeItemId: e.target.value})}
                 placeholder="e.g., 123456789"
               />
               <Input
-                label="SKU *"
+                label={`${t("sku")} *`}
                 value={newProduct.sku}
                 onChange={(e) => setNewProduct({...newProduct, sku: e.target.value})}
                 placeholder="e.g., PROD-001"
               />
               <Input
-                label="Product Name *"
+                label={`${t("productName")} *`}
                 value={newProduct.productName}
                 onChange={(e) => setNewProduct({...newProduct, productName: e.target.value})}
-                placeholder="Product name"
+                placeholder={t("productNamePlaceholder")}
                 style={{ gridColumn: '1 / -1' }}
               />
               <Input
-                label="Initial Stock"
+                label={t("initialStock")}
                 type="number"
                 value={newProduct.currentStock}
                 onChange={(e) => setNewProduct({...newProduct, currentStock: Number(e.target.value)})}
               />
               <Input
-                label="Low Stock Threshold"
+                label={t("lowStockThreshold")}
                 type="number"
                 value={newProduct.lowStockThreshold}
                 onChange={(e) => setNewProduct({...newProduct, lowStockThreshold: Number(e.target.value)})}
               />
               <Input
-                label="Cost Price"
+                label={t("costPrice")}
                 type="number"
                 value={newProduct.costPrice}
                 onChange={(e) => setNewProduct({...newProduct, costPrice: Number(e.target.value)})}
               />
               <Input
-                label="Selling Price"
+                label={t("sellingPrice")}
                 type="number"
                 value={newProduct.sellingPrice}
                 onChange={(e) => setNewProduct({...newProduct, sellingPrice: Number(e.target.value)})}
               />
               <Input
-                label="Supplier"
+                label={t("supplier")}
                 value={newProduct.supplier}
                 onChange={(e) => setNewProduct({...newProduct, supplier: e.target.value})}
-                placeholder="Supplier name"
+                placeholder={t("supplierName")}
               />
               <Input
-                label="Location"
+                label={t("location")}
                 value={newProduct.location}
                 onChange={(e) => setNewProduct({...newProduct, location: e.target.value})}
-                placeholder="e.g., Warehouse A"
+                placeholder={t("locationPlaceholder")}
               />
             </div>
 
             <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
               <Button onClick={handleAddProduct} disabled={loading} fullWidth>
-                {loading ? 'Adding...' : 'Add Product'}
+                {loading ? t("adding") : t("addProduct")}
               </Button>
               <Button onClick={() => setShowAddModal(false)} variant="ghost" fullWidth>
-                Cancel
+                {t("cancel")}
               </Button>
             </div>
           </div>

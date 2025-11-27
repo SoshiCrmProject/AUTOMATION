@@ -28,7 +28,7 @@ export default function ProductScraperPage() {
 
   const scrapeProduct = async () => {
     if (!productUrl || !productUrl.includes("amazon.co.jp")) {
-      pushToast("Please enter a valid Amazon Japan URL", "error");
+      pushToast(t("pleaseEnterValidAmazonURL"), "error");
       return;
     }
 
@@ -40,7 +40,7 @@ export default function ProductScraperPage() {
       const response = await api.post("/api/ops/amazon-test", { productUrl });
       
       // Show queue message
-      pushToast("✅ Scraping task queued! Check Ops page for results.", "success");
+      pushToast(t("scrapingTaskQueued"), "success");
       
       // For demo purposes, simulate result after a delay
       setTimeout(async () => {
@@ -59,14 +59,14 @@ export default function ProductScraperPage() {
             title: "Product Title (Sample)",
             asin: "B0XXXXXXXXX"
           });
-          pushToast("Scraping complete!", "success");
+          pushToast(t("scrapingComplete"), "success");
         } catch (err: any) {
           console.error("Demo error:", err);
         }
       }, 3000);
       
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || "Failed to scrape product";
+      const errorMsg = error.response?.data?.error || t("failedToScrapeProduct");
       setError(errorMsg);
       pushToast(errorMsg, "error");
     } finally {
@@ -84,7 +84,7 @@ export default function ProductScraperPage() {
         amazonTax: 0,
         productUrl: result.productUrl
       }));
-      pushToast("✅ Data copied! Open Calculator to use it.", "success");
+      pushToast(t("dataCopied"), "success");
     }
   };
 
@@ -109,10 +109,10 @@ export default function ProductScraperPage() {
           boxShadow: 'var(--shadow-lg)'
         }}>
           <h1 style={{ fontSize: 36, margin: 0, color: '#fff' }}>
-            🔍 Amazon Product Scraper
+            🔍 {t("amazonScraperTitle")}
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.9)', marginTop: 8, fontSize: 16 }}>
-            Extract product details, pricing, and availability from Amazon Japan
+            {t("amazonScraperSubtitle")}
           </p>
         </div>
 
@@ -121,21 +121,21 @@ export default function ProductScraperPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
             <Card>
               <CardHeader 
-                title="🌐 Product URL" 
-                subtitle="Enter Amazon Japan product link"
+                title={t("productURL")}
+                subtitle={t("enterAmazonLink")}
                 icon="🔗"
               />
               <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Input
-                  label="Amazon Product URL"
+                  label={t("amazonProductURL")}
                   value={productUrl}
                   onChange={(e) => setProductUrl(e.target.value)}
                   placeholder="https://www.amazon.co.jp/dp/B0XXXXXXXXX"
-                  hint="Must be a valid Amazon Japan URL"
+                  hint={t("mustBeValidAmazonURL")}
                 />
                 
                 {error && (
-                  <Alert variant="error" title="Scraping Error">
+                  <Alert variant="error" title={t("scrapingError")}>
                     {error}
                   </Alert>
                 )}
@@ -145,8 +145,8 @@ export default function ProductScraperPage() {
             {/* Quick Tips */}
             <Card>
               <CardHeader 
-                title="💡 Quick Tips" 
-                subtitle="Best practices for scraping"
+                title={t("quickTips")}
+                subtitle={t("quickTipsSubtitle")}
                 icon="📚"
               />
               <div style={{ padding: '0 24px 24px' }}>
@@ -157,12 +157,12 @@ export default function ProductScraperPage() {
                   fontSize: '14px',
                   lineHeight: 1.8
                 }}>
-                  <li>Use Amazon Japan URLs (amazon.co.jp)</li>
-                  <li>Ensure product is in stock</li>
-                  <li>Check seller is Amazon or trusted seller</li>
-                  <li>Verify product condition is "New"</li>
-                  <li>Note estimated delivery date</li>
-                  <li>Copy data to Calculator for profit analysis</li>
+                  <li>{t("quickTip1")}</li>
+                  <li>{t("quickTip2")}</li>
+                  <li>{t("quickTip3")}</li>
+                  <li>{t("quickTip4")}</li>
+                  <li>{t("quickTip5")}</li>
+                  <li>{t("quickTip6")}</li>
                 </ul>
               </div>
             </Card>
@@ -170,10 +170,10 @@ export default function ProductScraperPage() {
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '12px' }}>
               <Button onClick={scrapeProduct} disabled={loading || !productUrl} fullWidth variant="primary">
-                {loading ? "Scraping..." : "🔍 Scrape Product"}
+                {loading ? t("scraping") : `🔍 ${t("scrapeProduct")}`}
               </Button>
               <Button onClick={clearForm} variant="ghost" fullWidth>
-                🔄 Clear
+                🔄 {t("clearForm")}
               </Button>
             </div>
           </div>
@@ -182,8 +182,8 @@ export default function ProductScraperPage() {
           <div>
             <Card>
               <CardHeader 
-                title="📊 Scrape Results" 
-                subtitle="Extracted product information"
+                title={t("scrapeResults")}
+                subtitle={t("extractedProductInfo")}
                 icon="📈"
               />
               
@@ -191,10 +191,10 @@ export default function ProductScraperPage() {
                 <div style={{ padding: '60px 24px', textAlign: 'center' }}>
                   <div style={{ fontSize: '64px', marginBottom: '16px' }}>🔍</div>
                   <h3 style={{ marginBottom: '8px', color: 'var(--color-text-muted)' }}>
-                    No Data Yet
+                    {t("noDataYet")}
                   </h3>
                   <p style={{ color: 'var(--color-text-muted)', fontSize: '14px' }}>
-                    Enter a product URL and click Scrape Product
+                    {t("enterProductURLAndScrape")}
                   </p>
                 </div>
               ) : (
@@ -213,21 +213,21 @@ export default function ProductScraperPage() {
                     textAlign: 'center'
                   }}>
                     <Badge variant={result.isAvailable ? 'success' : 'error'} size="lg">
-                      {result.isAvailable ? '✅ In Stock' : '❌ Out of Stock'}
+                      {result.isAvailable ? `✅ ${t("inStock")}` : `❌ ${t("outOfStock")}`}
                     </Badge>
                   </div>
 
                   {/* Product Details */}
                   <div style={{ marginBottom: '24px' }}>
                     <h4 style={{ fontSize: '14px', fontWeight: 600, marginBottom: '16px', color: 'var(--color-text-muted)' }}>
-                      PRODUCT INFORMATION
+                      {t("productInformation")}
                     </h4>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
                       {result.title && (
                         <div>
                           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                            Title
+                            {t("productTitle")}
                           </div>
                           <div style={{ fontSize: '14px', fontWeight: 500 }}>
                             {result.title}
@@ -248,7 +248,7 @@ export default function ProductScraperPage() {
 
                       <div>
                         <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                          Price
+                          {t("price")}
                         </div>
                         <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--color-primary)' }}>
                           {result.currency}{result.price.toFixed(2)}
@@ -257,17 +257,17 @@ export default function ProductScraperPage() {
 
                       <div>
                         <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                          Condition
+                          {t("condition")}
                         </div>
                         <Badge variant={result.isNew ? 'success' : 'warning'}>
-                          {result.isNew ? 'New' : 'Used'}
+                          {result.isNew ? t("conditionNew") : t("conditionUsed")}
                         </Badge>
                       </div>
 
                       {result.pointsEarned && result.pointsEarned > 0 && (
                         <div>
                           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                            Points Earned
+                            {t("pointsEarned")}
                           </div>
                           <div style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-success)' }}>
                             +{result.pointsEarned} pts
@@ -278,7 +278,7 @@ export default function ProductScraperPage() {
                       {result.shippingText && (
                         <div>
                           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                            Shipping
+                            {t("shipping")}
                           </div>
                           <div style={{ fontSize: '14px' }}>
                             {result.shippingText}
@@ -289,7 +289,7 @@ export default function ProductScraperPage() {
                       {result.estimatedDelivery && (
                         <div>
                           <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '4px' }}>
-                            Estimated Delivery
+                            {t("estimatedDelivery")}
                           </div>
                           <div style={{ fontSize: '14px' }}>
                             {new Date(result.estimatedDelivery).toLocaleDateString()}
@@ -303,14 +303,14 @@ export default function ProductScraperPage() {
                   {result.isAvailable && (
                     <div style={{ display: 'flex', gap: '12px' }}>
                       <Button onClick={copyToCalculator} variant="primary" fullWidth>
-                        💰 Use in Calculator
+                        💰 {t("useInCalculator")}
                       </Button>
                       <Button 
                         onClick={() => window.open(result.productUrl, '_blank')} 
                         variant="ghost" 
                         fullWidth
                       >
-                        🔗 View on Amazon
+                        🔗 {t("viewOnAmazon")}
                       </Button>
                     </div>
                   )}

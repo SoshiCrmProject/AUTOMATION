@@ -246,10 +246,10 @@ export default function Notifications() {
             </div>
             <div style={{ display: 'flex', gap: '12px' }}>
               <Button onClick={() => setShowAddChannelModal(true)} disabled={!shopId} variant="ghost">
-                ➕ Add Channel
+                ➕ {t("addChannel")}
               </Button>
               <Button onClick={() => setShowAddRuleModal(true)} disabled={!shopId} variant="ghost">
-                ⚙️ Add Rule
+                ⚙️ {t("addRule")}
               </Button>
             </div>
           </div>
@@ -268,7 +268,7 @@ export default function Notifications() {
         </div>
 
         {!shopId && (
-          <Alert variant="info" title="Get Started">
+          <Alert variant="info" title={t("getStarted")}>
             Enter your Shop ID above to configure notification channels and rules
           </Alert>
         )}        {shopId && (
@@ -378,7 +378,7 @@ export default function Notifications() {
                         ) : (
                           <EmptyState
                             icon="📡"
-                            title="No Channels Configured"
+                            title={t("noChannelsConfigured")}
                             description="Add your first notification channel to start sending alerts"
                             action={
                               <Button onClick={() => setShowAddChannelModal(true)}>
@@ -456,7 +456,7 @@ export default function Notifications() {
                         ) : (
                           <EmptyState
                             icon="⚙️"
-                            title="No Notification Rules"
+                            title={t("noNotificationRules")}
                             description="Create automation rules to send notifications based on events"
                             action={
                               <Button onClick={() => setShowAddRuleModal(true)}>
@@ -553,7 +553,7 @@ export default function Notifications() {
                         ) : (
                           <EmptyState
                             icon="📜"
-                            title="No Notification History"
+                            title={t("noNotificationHistory")}
                             description="Sent notifications will appear here"
                           />
                         )}
@@ -574,7 +574,7 @@ export default function Notifications() {
           setShowAddChannelModal(false);
           setNewChannel({ name: "", type: "EMAIL", config: {} });
         }}
-        title="Add Notification Channel"
+        title={t("addNotificationChannel")}
       >
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
@@ -616,7 +616,7 @@ export default function Notifications() {
           setShowAddRuleModal(false);
           setNewRule({ name: "", event: "ORDER_PLACED", channelId: "", priority: "MEDIUM", template: "" });
         }}
-        title="Create Notification Rule"
+        title={t("createNotificationRule")}
         size="lg"
       >
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
