@@ -5,6 +5,7 @@ import { useRouter } from "next/router";
 import "../styles/globals.css";
 // api client is globally configured via interceptors; no need to import here
 import Toast from "../components/Toast";
+import ErrorBoundary from "../components/ErrorBoundary";
 import nextI18NextConfig from "../next-i18next.config";
 
 const OnboardingModal = dynamic(() => import("../components/OnboardingModal"), {
@@ -18,11 +19,13 @@ function MyApp({ Component, pageProps }: AppProps) {
   const hideOnboarding = path.startsWith("/login") || path.startsWith("/signup");
 
   return (
-    <div className="shell">
-      <Component {...pageProps} />
-      {!hideOnboarding && <OnboardingModal />}
-      <Toast />
-    </div>
+    <ErrorBoundary>
+      <div className="shell">
+        <Component {...pageProps} />
+        {!hideOnboarding && <OnboardingModal />}
+        <Toast />
+      </div>
+    </ErrorBoundary>
   );
 }
 

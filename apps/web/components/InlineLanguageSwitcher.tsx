@@ -15,7 +15,10 @@ export default function InlineLanguageSwitcher() {
   };
 
   return (
-    <div style={{
+    <div 
+      role="group" 
+      aria-label="Language selection"
+      style={{
       display: "inline-flex",
       alignItems: "center",
       gap: 8,
@@ -27,6 +30,8 @@ export default function InlineLanguageSwitcher() {
     }}>
       <button
         onClick={() => switchLanguage("en")}
+        aria-label="Switch to English"
+        aria-pressed={locale === "en"}
         style={{
           background: locale === "en" ? "white" : "transparent",
           color: locale === "en" ? "var(--color-primary)" : "white",
@@ -46,6 +51,8 @@ export default function InlineLanguageSwitcher() {
       </button>
       <button
         onClick={() => switchLanguage("ja")}
+        aria-label="Switch to Japanese"
+        aria-pressed={locale === "ja"}
         style={{
           background: locale === "ja" ? "white" : "transparent",
           color: locale === "ja" ? "var(--color-primary)" : "white",

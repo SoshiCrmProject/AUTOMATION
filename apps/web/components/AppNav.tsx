@@ -33,7 +33,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
   ];
   
   return (
-    <header className="nav">
+    <header className="nav" role="banner">
       <div style={{ 
         fontWeight: 800, 
         fontSize: 20,
@@ -49,7 +49,8 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
       <button 
         className="mobile-menu-toggle"
         onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        aria-label="Toggle menu"
+        aria-label="Toggle mobile menu"
+        aria-expanded={mobileMenuOpen}
       >
         {mobileMenuOpen ? "✕" : "☰"}
       </button>
