@@ -115,16 +115,16 @@ export default function Notifications() {
   const testChannel = async (channelId: string) => {
     try {
       await api.post(`/api/notifications/test/${channelId}`);
-      pushToast("Test notification sent successfully", "success");
+      pushToast(t("toastTestNotificationSuccess"), "success");
       refreshHistory();
     } catch (err) {
-      pushToast("Failed to send test notification", "error");
+      pushToast(t("toastTestNotificationFailed"), "error");
     }
   };
 
   const handleAddChannel = async () => {
     if (!shopId || !newChannel.name) {
-      pushToast("Please fill in required fields", "error");
+      pushToast(t("toastPleaseFilLRequiredFields"), "error");
       return;
     }
     
@@ -134,7 +134,7 @@ export default function Notifications() {
         shopId,
         ...newChannel
       });
-      pushToast("Channel created successfully", "success");
+      pushToast(t("toastChannelCreated"), "success");
       setShowAddChannelModal(false);
       setNewChannel({ name: "", type: "EMAIL", config: {} });
       refreshChannels();
@@ -147,7 +147,7 @@ export default function Notifications() {
 
   const handleAddRule = async () => {
     if (!shopId || !newRule.name || !newRule.channelId) {
-      pushToast("Please fill in required fields", "error");
+      pushToast(t("toastPleaseFilLRequiredFields"), "error");
       return;
     }
     
@@ -157,7 +157,7 @@ export default function Notifications() {
         shopId,
         ...newRule
       });
-      pushToast("Rule created successfully", "success");
+      pushToast(t("toastRuleCreated"), "success");
       setShowAddRuleModal(false);
       setNewRule({ name: "", event: "ORDER_PLACED", channelId: "", priority: "MEDIUM", template: "" });
       refreshRules();
@@ -174,7 +174,7 @@ export default function Notifications() {
       pushToast(`Channel ${isActive ? 'activated' : 'deactivated'}`, "success");
       refreshChannels();
     } catch (err) {
-      pushToast("Failed to update channel", "error");
+      pushToast(t("toastChannelUpdateFailed"), "error");
     }
   };
 
@@ -184,19 +184,19 @@ export default function Notifications() {
       pushToast(`Rule ${isActive ? 'activated' : 'deactivated'}`, "success");
       refreshRules();
     } catch (err) {
-      pushToast("Failed to update rule", "error");
+      pushToast(t("toastRuleUpdateFailed"), "error");
     }
   };
 
   const deleteChannel = async (channelId: string) => {
-    if (!confirm("Are you sure you want to delete this channel?")) return;
+    if (!confirm(t("confirmDeleteChannel"))) return;
     
     try {
       await api.delete(`/api/notifications/channels/${channelId}`);
-      pushToast("Channel deleted", "success");
+      pushToast(t("toastChannelDeleted"), "success");
       refreshChannels();
     } catch (err) {
-      pushToast("Failed to delete channel", "error");
+      pushToast(t("toastChannelDeleteFailed"), "error");
     }
   };
 
@@ -262,7 +262,7 @@ export default function Notifications() {
               label="Shop ID"
               value={shopId}
               onChange={(e) => setShopId(e.target.value)}
-              placeholder="Enter Shop ID to manage notifications"
+              placeholder={t("enterShopIDNotifications")}
             />
           </Card>
         </div>
@@ -379,7 +379,7 @@ export default function Notifications() {
                           <EmptyState
                             icon="📡"
                             title={t("noChannelsConfigured")}
-                            description="Add your first notification channel to start sending alerts"
+                            description={t("descriptionAddFirstChannel")}
                             action={
                               <Button onClick={() => setShowAddChannelModal(true)}>
                                 ➕ Add Channel
@@ -457,7 +457,7 @@ export default function Notifications() {
                           <EmptyState
                             icon="⚙️"
                             title={t("noNotificationRules")}
-                            description="Create automation rules to send notifications based on events"
+                            description={t("descriptionCreateAutomationRules")}
                             action={
                               <Button onClick={() => setShowAddRuleModal(true)}>
                                 ⚙️ Add Rule
@@ -554,7 +554,7 @@ export default function Notifications() {
                           <EmptyState
                             icon="📜"
                             title={t("noNotificationHistory")}
-                            description="Sent notifications will appear here"
+                            description={t("descriptionSentNotifications")}
                           />
                         )}
                       </div>
@@ -581,7 +581,7 @@ export default function Notifications() {
             label="Channel Name"
             value={newChannel.name}
             onChange={(e) => setNewChannel({ ...newChannel, name: e.target.value })}
-            placeholder="e.g., Primary Email"
+            placeholder={t("channelNamePlaceholder")}
           />
           <Select
             label="Channel Type"
@@ -624,7 +624,7 @@ export default function Notifications() {
             label="Rule Name"
             value={newRule.name}
             onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
-            placeholder="e.g., Order Confirmation"
+            placeholder={t("ruleNamePlaceholder")}
           />
           <Select
             label="Trigger Event"
@@ -669,7 +669,7 @@ export default function Notifications() {
               className="input"
               value={newRule.template}
               onChange={(e) => setNewRule({ ...newRule, template: e.target.value })}
-              placeholder="Use {{variables}} for dynamic content"
+              placeholder={t("messageTemplatePlaceholder")}
               rows={4}
               style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: '13px' }}
             />

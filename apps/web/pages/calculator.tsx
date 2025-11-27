@@ -136,22 +136,22 @@ export default function ProfitCalculatorPage() {
                   type="number"
                   value={shopeePrice}
                   onChange={(e) => setShopeePrice(Number(e.target.value))}
-                  placeholder="5000"
+                  placeholder={t("placeholder5000")}
                 />
                 <Input
                   label={t("shippingFeePaid")}
                   type="number"
                   value={shopeeShipping}
                   onChange={(e) => setShopeeShipping(Number(e.target.value))}
-                  placeholder="500"
+                  placeholder={t("placeholder500")}
                 />
                 <Input
                   label={t("shopeeFeesCommissions")}
                   type="number"
                   value={shopeeFees}
                   onChange={(e) => setShopeeFees(Number(e.target.value))}
-                  placeholder="300"
-                  hint="Platform fees, transaction fees, etc."
+                  placeholder={t("placeholder300")}
+                  hint={t("hintPlatformFees")}
                 />
               </div>
             </Card>
@@ -169,29 +169,29 @@ export default function ProfitCalculatorPage() {
                   type="number"
                   value={amazonPrice}
                   onChange={(e) => setAmazonPrice(Number(e.target.value))}
-                  placeholder="3500"
+                  placeholder={t("placeholder3500")}
                 />
                 <Input
                   label={t("amazonShippingCost")}
                   type="number"
                   value={amazonShipping}
                   onChange={(e) => setAmazonShipping(Number(e.target.value))}
-                  placeholder="400"
+                  placeholder={t("placeholder400")}
                 />
                 <Input
                   label={t("taxAmount")}
                   type="number"
                   value={amazonTax}
                   onChange={(e) => setAmazonTax(Number(e.target.value))}
-                  placeholder="0"
+                  placeholder={t("placeholder0")}
                 />
                 <Input
                   label={t("pointsEarned")}
                   type="number"
                   value={amazonPoints}
                   onChange={(e) => setAmazonPoints(Number(e.target.value))}
-                  placeholder="35"
-                  hint="Points you'll earn from this purchase"
+                  placeholder={t("placeholder35")}
+                  hint={t("hintPointsEarn")}
                 />
               </div>
             </Card>
@@ -230,7 +230,7 @@ export default function ProfitCalculatorPage() {
                     type="number"
                     value={domesticShippingCost}
                     onChange={(e) => setDomesticShippingCost(Number(e.target.value))}
-                    placeholder="500"
+                    placeholder={t("placeholder500Domestic")}
                   />
                 )}
               </div>

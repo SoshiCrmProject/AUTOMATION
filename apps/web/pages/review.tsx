@@ -240,7 +240,7 @@ export default function ReviewPage() {
               label="Shop ID"
               value={shopId}
               onChange={(e) => setShopId(e.target.value)}
-              placeholder="Enter Shop ID to view returns"
+              placeholder={t("enterShopIDReturns")}
             />
           </div>
 
@@ -463,7 +463,7 @@ export default function ReviewPage() {
                 <EmptyState
                   icon="🔄"
                   title={t("noReturnsFound")}
-                  description="Return requests will appear here when customers initiate returns"
+                  description={t("descriptionReturnRequests")}
                 />
               )}
             </>
@@ -586,7 +586,7 @@ export default function ReviewPage() {
               className="input"
               value={processNotes}
               onChange={(e) => setProcessNotes(e.target.value)}
-              placeholder="Add internal notes about this decision..."
+              placeholder={t("addInternalNotes")}
               rows={4}
               style={{ width: '100%', resize: 'vertical' }}
             />

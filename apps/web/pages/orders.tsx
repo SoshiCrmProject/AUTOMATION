@@ -299,7 +299,7 @@ export default function OrdersPage() {
                   label="Search Orders"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by Shopee or Amazon order ID..."
+                  placeholder={t("searchByOrderID")}
                 />
                 <Select
                   label="Filter by Status"
@@ -444,7 +444,7 @@ export default function OrdersPage() {
               <EmptyState
                 icon="📦"
                 title={t("noOrdersFound")}
-                description="Try adjusting your filters or search term"
+                description={t("descriptionAdjustFilters")}
               />
             )}
           </>

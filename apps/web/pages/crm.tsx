@@ -242,7 +242,7 @@ export default function CRM() {
               label="Shop ID"
               value={shopId}
               onChange={(e) => setShopId(e.target.value)}
-              placeholder="Enter Shop ID to view customer data"
+              placeholder={t("enterShopIDPlaceholder")}
             />
           </Card>
         </div>
@@ -323,7 +323,7 @@ export default function CRM() {
                   label="Search Customers"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="Search by name or email..."
+                  placeholder={t("searchByNameOrEmail")}
                 />
                 <Select
                   label="Filter by Tier"
@@ -410,7 +410,7 @@ export default function CRM() {
               <EmptyState
                 icon="👥"
                 title={t("noCustomersFound")}
-                description="Try adjusting your filters or search term"
+                description={t("descriptionAdjustFilters")}
               />
             )}
           </>
@@ -614,7 +614,7 @@ export default function CRM() {
                 className="input"
                 value={interactionDesc}
                 onChange={(e) => setInteractionDesc(e.target.value)}
-                placeholder="Describe the interaction..."
+                placeholder={t("describeInteraction")}
                 rows={4}
                 style={{ width: '100%', resize: 'vertical' }}
               />
@@ -657,7 +657,7 @@ export default function CRM() {
                 className="input"
                 value={loyaltyReason}
                 onChange={(e) => setLoyaltyReason(e.target.value)}
-                placeholder="Why is the tier being changed?"
+                placeholder={t("whyTierChanged")}
                 rows={3}
                 style={{ width: '100%', resize: 'vertical' }}
               />

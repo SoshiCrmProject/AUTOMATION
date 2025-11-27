@@ -351,7 +351,7 @@ export default function SettingsPage() {
                     type="number"
                     value={maxShippingDays}
                     onChange={(e) => setMaxShippingDays(Number(e.target.value))}
-                    hint="Maximum delivery time from Amazon"
+                    hint={t("hintMaxDeliveryTime")}
                   />
                 </div>
                 <div>
@@ -360,7 +360,7 @@ export default function SettingsPage() {
                     type="number"
                     value={minExpectedProfit}
                     onChange={(e) => setMinExpectedProfit(Number(e.target.value))}
-                    hint="Minimum profit margin per order"
+                    hint={t("hintMinProfitMargin")}
                   />
                 </div>
                 <div>
@@ -369,7 +369,7 @@ export default function SettingsPage() {
                     type="number"
                     value={domesticShippingCost}
                     onChange={(e) => setDomesticShippingCost(Number(e.target.value))}
-                    hint="Cost for domestic shipping"
+                    hint={t("hintDomesticShippingCost")}
                   />
                 </div>
                 <div>
@@ -378,7 +378,7 @@ export default function SettingsPage() {
                     type="number"
                     value={reviewBandPercent}
                     onChange={(e) => setReviewBandPercent(Number(e.target.value))}
-                    hint="Percentage band for manual review"
+                    hint={t("hintManualReviewBand")}
                   />
                 </div>
               </div>
@@ -456,23 +456,23 @@ export default function SettingsPage() {
                   label="Partner ID 🔢"
                   value={shopeePartnerId}
                   onChange={(e) => setShopeePartnerId(e.target.value)}
-                  placeholder="Enter numeric Partner ID (e.g., 1234567)"
-                  hint="Find this in your Shopee Open Platform app settings"
+                  placeholder={t("partnerIDPlaceholder")}
+                  hint={t("hintPartnerID")}
                 />
                 <Input
                   label="Partner Key 🔐"
                   type="password"
                   value={shopeePartnerKey}
                   onChange={(e) => setShopeePartnerKey(e.target.value)}
-                  placeholder="Enter Partner Key (secret)"
-                  hint="Keep this secret! Used for signing API requests"
+                  placeholder={t("partnerKeyPlaceholder")}
+                  hint={t("hintPartnerKey")}
                 />
                 <Input
                   label="Shop ID 🏪"
                   value={shopeeShopId}
                   onChange={(e) => setShopeeShopId(e.target.value)}
-                  placeholder="Enter numeric Shop ID (e.g., 987654)"
-                  hint="Get from your Shopee seller center URL or API"
+                  placeholder={t("shopIDPlaceholder")}
+                  hint={t("hintShopID")}
                 />
               </div>
 
@@ -538,23 +538,23 @@ export default function SettingsPage() {
                   type="email"
                   value={amazonEmail}
                   onChange={(e) => setAmazonEmail(e.target.value)}
-                  placeholder="your-email@example.com"
-                  hint="The email you use to log in to Amazon"
+                  placeholder={t("emailPlaceholder")}
+                  hint={t("hintAmazonEmail")}
                 />
                 <Input
                   label="Amazon Password 🔑"
                   type="password"
                   value={amazonPassword}
                   onChange={(e) => setAmazonPassword(e.target.value)}
-                  placeholder="••••••••"
-                  hint="Your Amazon account password (stored encrypted)"
+                  placeholder={t("passwordPlaceholder")}
+                  hint={t("hintAmazonPassword")}
                 />
                 <Input
                   label="Shipping Label 🏷️"
                   value={amazonShippingLabel}
                   onChange={(e) => setAmazonShippingLabel(e.target.value)}
-                  placeholder="Shopee Warehouse"
-                  hint="Default shipping label for orders"
+                  placeholder={t("warehousePlaceholder")}
+                  hint={t("hintDefaultShippingLabel")}
                 />
               </div>
 
@@ -582,8 +582,8 @@ export default function SettingsPage() {
                   label="Webhook URL"
                   value={alertWebhookUrl}
                   onChange={(e) => setAlertWebhookUrl(e.target.value)}
-                  placeholder="https://hooks.slack.com/services/..."
-                  hint="Slack or Discord webhook URL"
+                  placeholder={t("webhookPlaceholder")}
+                  hint={t("hintWebhookURL")}
                 />
               </div>
 

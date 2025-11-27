@@ -240,7 +240,7 @@ export default function Dashboard() {
                           }
                         ]}
                         data={ordersArray}
-                        emptyMessage="No recent orders"
+                        emptyMessage={t("emptyNoRecentOrders")}
                         onRowClick={(row) => setSelectedOrderId(row.id)}
                       />
                     ),
