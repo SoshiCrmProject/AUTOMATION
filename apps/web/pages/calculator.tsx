@@ -50,7 +50,7 @@ export default function ProfitCalculatorPage() {
           setAmazonTax(data.amazonTax || 0);
           // Clear the data after loading
           localStorage.removeItem('amazonScrapedData');
-          pushToast("✅ Amazon data loaded from scraper!", "success");
+          pushToast(t("amazonDataLoaded"), "success");
         } catch (e) {
           console.error("Failed to parse scraped data:", e);
         }
@@ -76,12 +76,12 @@ export default function ProfitCalculatorPage() {
       setResult(response.data);
       
       if (response.data.isViable) {
-        pushToast("✅ Profitable order!", "success");
+        pushToast(t("profitableOrder"), "success");
       } else {
-        pushToast("⚠️ Not profitable with current settings", "error");
+        pushToast(t("notProfitableWithSettings"), "error");
       }
     } catch (error: any) {
-      pushToast(error.response?.data?.error || "Calculation failed", "error");
+      pushToast(error.response?.data?.error || t("calculationFailed"), "error");
     } finally {
       setLoading(false);
     }
@@ -113,10 +113,10 @@ export default function ProfitCalculatorPage() {
           boxShadow: 'var(--shadow-lg)'
         }}>
           <h1 style={{ fontSize: 36, margin: 0, color: '#fff' }}>
-            💰 Profit Calculator
+            💰 {t("profitCalculatorTitle")}
           </h1>
           <p style={{ color: 'rgba(255,255,255,0.9)', marginTop: 8, fontSize: 16 }}>
-            Calculate expected profit margins for Shopee to Amazon orders
+            {t("profitCalculatorSubtitle")}
           </p>
         </div>
 
@@ -126,27 +126,27 @@ export default function ProfitCalculatorPage() {
             {/* Shopee Order Details */}
             <Card>
               <CardHeader 
-                title="🛍️ Shopee Order Details" 
-                subtitle="Customer payment information"
+                title={`🛍️ ${t("shopeeOrderDetails")}`}
+                subtitle={t("customerPaymentInfo")}
                 icon="📥"
               />
               <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Input
-                  label="Order Total (¥)"
+                  label={t("orderTotal")}
                   type="number"
                   value={shopeePrice}
                   onChange={(e) => setShopeePrice(Number(e.target.value))}
                   placeholder="5000"
                 />
                 <Input
-                  label="Shipping Fee Paid by Customer (¥)"
+                  label={t("shippingFeePaid")}
                   type="number"
                   value={shopeeShipping}
                   onChange={(e) => setShopeeShipping(Number(e.target.value))}
                   placeholder="500"
                 />
                 <Input
-                  label="Shopee Fees & Commissions (¥)"
+                  label={t("shopeeFeesCommissions")}
                   type="number"
                   value={shopeeFees}
                   onChange={(e) => setShopeeFees(Number(e.target.value))}
@@ -159,34 +159,34 @@ export default function ProfitCalculatorPage() {
             {/* Amazon Purchase Details */}
             <Card>
               <CardHeader 
-                title="📦 Amazon Purchase Details" 
-                subtitle="Costs to fulfill the order"
+                title={`📦 ${t("amazonPurchaseDetails")}`}
+                subtitle={t("costsToFulfill")}
                 icon="📤"
               />
               <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                 <Input
-                  label="Product Price (¥)"
+                  label={t("productPrice")}
                   type="number"
                   value={amazonPrice}
                   onChange={(e) => setAmazonPrice(Number(e.target.value))}
                   placeholder="3500"
                 />
                 <Input
-                  label="Amazon Shipping Cost (¥)"
+                  label={t("amazonShippingCost")}
                   type="number"
                   value={amazonShipping}
                   onChange={(e) => setAmazonShipping(Number(e.target.value))}
                   placeholder="400"
                 />
                 <Input
-                  label="Tax (¥)"
+                  label={t("taxAmount")}
                   type="number"
                   value={amazonTax}
                   onChange={(e) => setAmazonTax(Number(e.target.value))}
                   placeholder="0"
                 />
                 <Input
-                  label="Amazon Points Earned (¥)"
+                  label={t("pointsEarned")}
                   type="number"
                   value={amazonPoints}
                   onChange={(e) => setAmazonPoints(Number(e.target.value))}
@@ -199,8 +199,8 @@ export default function ProfitCalculatorPage() {
             {/* Settings */}
             <Card>
               <CardHeader 
-                title="⚙️ Calculation Settings" 
-                subtitle="Additional cost considerations"
+                title={`⚙️ ${t("calculationSettings")}`}
+                subtitle={t("additionalCostConsiderations")}
                 icon="🔧"
               />
               <div style={{ padding: '0 24px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -211,7 +211,7 @@ export default function ProfitCalculatorPage() {
                     onChange={(e) => setIncludePoints(e.target.checked)}
                     style={{ width: 18, height: 18 }}
                   />
-                  <span>Include Amazon Points in Profit</span>
+                  <span>{t("includeAmazonPointsInProfit")}</span>
                 </label>
                 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer' }}>
@@ -221,12 +221,12 @@ export default function ProfitCalculatorPage() {
                     onChange={(e) => setIncludeDomesticShipping(e.target.checked)}
                     style={{ width: 18, height: 18 }}
                   />
-                  <span>Include Domestic Shipping Cost</span>
+                  <span>{t("includeDomesticShippingCost")}</span>
                 </label>
                 
                 {includeDomesticShipping && (
                   <Input
-                    label="Domestic Shipping Cost (¥)"
+                    label={t("domesticShippingJPY")}
                     type="number"
                     value={domesticShippingCost}
                     onChange={(e) => setDomesticShippingCost(Number(e.target.value))}
@@ -239,10 +239,10 @@ export default function ProfitCalculatorPage() {
             {/* Action Buttons */}
             <div style={{ display: 'flex', gap: '12px' }}>
               <Button onClick={calculateProfit} disabled={loading} fullWidth variant="primary">
-                {loading ? "Calculating..." : "💰 Calculate Profit"}
+                {loading ? "Calculating..." : `💰 ${t("calculateProfit")}`}
               </Button>
               <Button onClick={clearForm} variant="ghost" fullWidth>
-                🔄 Clear
+                🔄 {t("clearForm")}
               </Button>
             </div>
           </div>
@@ -251,8 +251,8 @@ export default function ProfitCalculatorPage() {
           <div>
             <Card>
               <CardHeader 
-                title="📊 Profit Analysis" 
-                subtitle="Calculated profit and margins"
+                title={`📊 ${t("profitAnalysis")}`}
+                subtitle={t("calculatedProfitMargins")}
                 icon="📈"
               />
               
@@ -282,7 +282,7 @@ export default function ProfitCalculatorPage() {
                   }}>
                     <div style={{ textAlign: 'center' }}>
                       <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
-                        Net Profit
+                        {t("netProfit")}
                       </div>
                       <div style={{
                         fontSize: '48px',
@@ -293,7 +293,7 @@ export default function ProfitCalculatorPage() {
                         ¥{result.profit.toFixed(2)}
                       </div>
                       <Badge variant={result.isViable ? 'success' : 'error'} size="lg">
-                        {result.isViable ? '✅ Profitable' : '❌ Not Profitable'}
+                        {result.isViable ? `✅ ${t("profitable")}` : `❌ ${t("notProfitable")}`}
                       </Badge>
                     </div>
                   </div>
