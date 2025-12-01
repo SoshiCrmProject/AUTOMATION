@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
-import AppNav from "../components/AppNav";
+import PageLayout from "../components/PageLayout";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { crmTour } from "../components/tourConfigs";
 import { 
@@ -79,7 +79,7 @@ export default function CRM() {
     fetcher
   );
   
-  const { data: stats } = useSWR<CustomerStats>(
+  const { data: stats, mutate: refreshStats } = useSWR<CustomerStats>(
     shopId ? `/api/crm/stats/${shopId}` : null,
     fetcher
   );
@@ -211,484 +211,597 @@ export default function CRM() {
     }
   };
 
+  const totalCustomers = stats?.totalCustomers ?? 0;
+  const averageLtv = stats?.avgLifetimeValue ?? 0;
+  const platinumMembers = stats?.loyaltyDistribution?.PLATINUM ?? 0;
+  const churnRate = stats?.churnRate ?? 0;
+  const newCustomers = stats?.newCustomersThisMonth ?? 0;
+  const blacklisted = stats?.blacklistedCount ?? 0;
+
+  const handleReplayTour = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem("tour_completed_crm");
+      setShowTour(true);
+      window.location.reload();
+    }
+  };
+
+  const handleRefresh = () => {
+    if (!shopId) {
+      pushToast(t("enterShopIdFirst") || "Enter a Shop ID to load data", "info");
+      return;
+    }
+    refreshCustomers();
+    refreshStats();
+    pushToast(t("crmRefreshing") || "Refreshing CRM data", "success");
+  };
+
+  const heroBadge = (
+    <Badge variant={shopId ? "success" : "warning"}>
+      {shopId ? `${filteredCustomers.length} ${t("customersVisible") || "customers"}` : t("awaitingShopId") || "Awaiting shop ID"}
+    </Badge>
+  );
+
+  const heroAside = (
+    <div
+      style={{
+        display: "grid",
+        gap: 16,
+        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
+      }}
+    >
+      {[{
+        label: t("totalCustomers") || "Total customers",
+        value: shopId ? totalCustomers.toLocaleString() : "--",
+        helper: shopId ? (t("crmTotalCustomersHelper") || "Active contacts") : (t("crmConnectShopPrompt") || "Connect a shop to load data")
+      }, {
+        label: t("avgLifetimeValue") || "Avg lifetime value",
+        value: shopId ? `$${averageLtv.toFixed(2)}` : "--",
+        helper: shopId ? (t("crmAverageLtvHelper") || "Per customer") : (t("crmConnectShopPrompt") || "Connect a shop to load data")
+      }, {
+        label: t("newThisMonth") || "New this month",
+        value: shopId ? newCustomers : "--",
+        helper: shopId ? (t("crmNewThisMonthHelper") || "Fresh leads") : (t("crmConnectShopPrompt") || "Connect a shop to load data")
+      }].map((stat) => (
+        <div key={stat.label} className="stat-card" style={{ padding: 16 }}>
+          <p style={{ fontSize: 12, textTransform: "uppercase", color: "var(--color-text-light)", marginBottom: 6 }}>{stat.label}</p>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{stat.value}</div>
+          <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: 13 }}>{stat.helper}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {t("crmHeroFooter") || "Sync customer health daily to keep loyalty automation accurate."}
+    </span>
+  );
+
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          placeholder={t("shopIdPlaceholder") || "Shop ID"}
+          value={shopId}
+          onChange={(e) => setShopId(e.target.value)}
+          aria-label={t("shopId") || "Shop ID"}
+        />
+      </div>
+      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          placeholder={t("searchCustomers") || "Search customers"}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          aria-label={t("searchCustomers") || "Search customers"}
+          disabled={!shopId}
+        />
+      </div>
+      <div style={{ flex: "0 1 180px", minWidth: 180 }}>
+        <Select
+          value={tierFilter}
+          onChange={(e) => setTierFilter(e.target.value)}
+          options={[
+            { value: "all", label: t("allTiers") || "All tiers" },
+            { value: "PLATINUM", label: "💎 Platinum" },
+            { value: "GOLD", label: "🥇 Gold" },
+            { value: "SILVER", label: "🥈 Silver" },
+            { value: "BRONZE", label: "🥉 Bronze" }
+          ]}
+          disabled={!shopId}
+        />
+      </div>
+      <Button type="button" variant="ghost" onClick={handleRefresh}>
+        🔄 {t("refreshData") || "Refresh"}
+      </Button>
+    </div>
+  );
+
+  const actions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={() => window.open("/api/crm/export", "_blank")}>
+        ⬇️ {t("exportCsv") || "Export CSV"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleReplayTour}>
+        🧭 {t("replayTour") || "Replay tour"}
+      </Button>
+    </div>
+  );
+
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader title={t("crmQuickActions") || "Quick actions"} subtitle={t("crmShortcutsSubtitle") || "Jump into common workflows"} icon="⚡" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/notifications")}>
+            🔔 {t("notifySegment") || "Notify segment"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/analytics")}>
+            📈 {t("viewAnalytics") || "View analytics"}
+          </Button>
+          <Button type="button" onClick={() => window.open("mailto:support@automation?subject=CRM%20Insights", "_blank")}>
+            📤 {t("shareInsights") || "Share insights"}
+          </Button>
+        </div>
+      </Card>
+      <Card hover={false}>
+        <CardHeader title={t("crmPlaybooks") || "Playbooks"} subtitle={t("crmPlaybooksSubtitle") || "Recommended next steps"} icon="📘" />
+        <ul style={{ margin: 0, paddingLeft: 20, color: "var(--color-text)", display: "flex", flexDirection: "column", gap: 8 }}>
+          <li>{t("crmPlaybookRetention") || "Launch win-back campaign for dormant customers."}</li>
+          <li>{t("crmPlaybookLoyalty") || "Upgrade loyal buyers to the next tier automatically."}</li>
+          <li>{t("crmPlaybookBlacklist") || "Audit blacklisted accounts every Friday."}</li>
+        </ul>
+      </Card>
+    </div>
+  );
+
   return (
-    <div className="shell">
-      <AppNav activeHref="/crm" />
-      <div className="container">
-        {/* Hero Section */}
-        <div style={{
-          background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-          padding: '48px 32px',
-          borderRadius: 'var(--radius-xl)',
-          marginBottom: 32,
-          boxShadow: 'var(--shadow-lg)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div>
-              <h1 style={{ fontSize: 36, margin: 0, color: '#fff' }}>
-                👥 Customer Relationship Management
-              </h1>
-              <p style={{ color: 'rgba(255,255,255,0.9)', marginTop: 8, fontSize: 16 }}>
-                Build relationships, track loyalty, and maximize customer lifetime value
-              </p>
-            </div>
-          </div>
-        </div>
+    <>
+      <PageLayout
+        activeHref="/crm"
+        title="👥 Customer Relationship Management"
+        description={t("crmHeroDescription") || "Build relationships, track loyalty, and maximize customer lifetime value."}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        toolbar={toolbar}
+        actions={actions}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {!shopId && (
+            <Alert variant="info" title={t("connectShop") || "Connect a shop"}>
+              {t("crmConnectShopDescription") || "Enter your Shop ID above to load CRM data."}
+            </Alert>
+          )}
 
-        {/* Shop ID Input */}
-        <div style={{ marginBottom: 24 }}>
-          <Card>
-            <Input
-              label="Shop ID"
-              value={shopId}
-              onChange={(e) => setShopId(e.target.value)}
-              placeholder={t("enterShopIDPlaceholder")}
-            />
-          </Card>
-        </div>
+          {isLoading && <LoadingSpinner text={t("loadingCustomers") || "Loading customers"} />}
 
-        {!shopId && (
-          <Alert variant="info">
-            <strong>Get Started</strong>
-            <p style={{ marginTop: 4 }}>Enter your Shop ID above to view customer data</p>
-          </Alert>
-        )}
-
-        {isLoading && <LoadingSpinner />}
-
-        {shopId && stats && (
-          <>
-            {/* Stats Overview */}
-            <div className="grid grid-4" style={{ marginBottom: 24 }}>
-              <StatCard
-                icon="👥"
-                label="Total Customers"
-                value={stats.totalCustomers.toLocaleString()}
-                color="primary"
-              />
-              <StatCard
-                icon="💰"
-                label="Avg Lifetime Value"
-                value={`$${stats.avgLifetimeValue.toFixed(2)}`}
-                color="success"
-              />
-              <StatCard
-                icon="💎"
-                label="Platinum Members"
-                value={(stats.loyaltyDistribution.PLATINUM || 0).toString()}
-                color="info"
-              />
-              <StatCard
-                icon="🚫"
-                label="Blacklisted"
-                value={stats.blacklistedCount.toString()}
-                color="error"
-              />
-            </div>
-
-            {/* Loyalty Distribution */}
-            <div style={{ marginBottom: 24 }}>
-              <Card>
-                <CardHeader title="🏆 Loyalty Tier Distribution" />
-              <div className="grid grid-4" style={{ gap: 16 }}>
-                {Object.entries(stats.loyaltyDistribution).map(([tier, count]) => (
+          {shopId && !isLoading && (
+            <>
+              {stats && (
+                <>
                   <div
-                    key={tier}
                     style={{
-                      padding: 20,
-                      background: "var(--color-elevated)",
-                      borderRadius: "var(--radius-lg)",
-                      textAlign: "center",
-                      border: "2px solid var(--color-border)"
+                      display: "grid",
+                      gap: 16,
+                      gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))"
                     }}
                   >
-                    <div style={{ fontSize: 36, marginBottom: 8 }}>{getTierEmoji(tier)}</div>
-                    <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 4, fontWeight: 600 }}>
-                      {tier}
-                    </div>
-                    <div style={{ fontSize: 24, fontWeight: 700, color: getTierColor(tier) }}>
-                      {count}
-                    </div>
+                    <StatCard icon="👥" label={t("totalCustomers") || "Total customers"} value={stats.totalCustomers.toLocaleString()} color="primary" />
+                    <StatCard icon="💰" label={t("avgLifetimeValue") || "Avg lifetime value"} value={`$${stats.avgLifetimeValue.toFixed(2)}`} color="success" />
+                    <StatCard icon="💎" label={t("platinumMembers") || "Platinum members"} value={platinumMembers.toString()} color="info" />
+                    <StatCard icon="🚫" label={t("blacklisted") || "Blacklisted"} value={blacklisted.toString()} color="error" />
                   </div>
-                ))}
-              </div>
-            </Card>
-            </div>
 
-            {/* Filters */}
-            <div style={{ marginBottom: 24 }}>
-              <Card>
-                <div className="grid grid-2" style={{ gap: 16 }}>
-                <Input
-                  label="Search Customers"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={t("searchByNameOrEmail")}
-                />
-                <Select
-                  label="Filter by Tier"
-                  value={tierFilter}
-                  onChange={(e) => setTierFilter(e.target.value)}
-                  options={[
-                    { value: "all", label: "All Tiers" },
-                    { value: "PLATINUM", label: "💎 Platinum" },
-                    { value: "GOLD", label: "🥇 Gold" },
-                    { value: "SILVER", label: "🥈 Silver" },
-                    { value: "BRONZE", label: "🥉 Bronze" }
-                  ]}
-                 />
-               </div>
-             </Card>
-             </div>            {/* Customers Table */}
-            {filteredCustomers.length > 0 ? (
-              <Card>
-                <CardHeader title="📋 Customer List" subtitle={`${filteredCustomers.length} customers`} />
-                <Table
-                  columns={[
-                    { key: "customer", header: "Customer" },
-                    { key: "tier", header: "Tier", width: "140px" },
-                    { key: "orders", header: "Orders", width: "100px" },
-                    { key: "ltv", header: "Lifetime Value", width: "140px" },
-                    { key: "lastPurchase", header: "Last Purchase", width: "130px" },
-                    { key: "status", header: "Status", width: "120px" },
-                    { key: "actions", header: "Actions", width: "140px" }
-                  ]}
-                  data={filteredCustomers.map(customer => ({
-                    _customer: customer,
-                    customer: (
-                      <div>
-                        <div style={{ fontWeight: 600 }}>{customer.name}</div>
-                        <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                          {customer.email}
+                  <Card>
+                    <CardHeader title="🏆 Loyalty Tier Distribution" subtitle={t("crmLoyaltySubtitle") || "Snapshot across all tiers"} />
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 16,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
+                      }}
+                    >
+                      {Object.entries(stats.loyaltyDistribution).map(([tier, count]) => (
+                        <div
+                          key={tier}
+                          style={{
+                            padding: 20,
+                            background: "var(--color-elevated)",
+                            borderRadius: "var(--radius-lg)",
+                            textAlign: "center",
+                            border: "1px solid var(--color-border)"
+                          }}
+                        >
+                          <div style={{ fontSize: 32, marginBottom: 8 }}>{getTierEmoji(tier)}</div>
+                          <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 4, fontWeight: 600 }}>
+                            {tier}
+                          </div>
+                          <div style={{ fontSize: 24, fontWeight: 700, color: getTierColor(tier) }}>
+                            {count}
+                          </div>
                         </div>
-                      </div>
-                    ),
-                    tier: (
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ fontSize: 20 }}>{getTierEmoji(customer.loyaltyTier)}</span>
-                        <span style={{ fontWeight: 600, color: getTierColor(customer.loyaltyTier) }}>
-                          {customer.loyaltyTier}
+                      ))}
+                    </div>
+                  </Card>
+
+                  <Card>
+                    <CardHeader title={t("crmHealthPulse") || "Engagement pulse"} subtitle={t("crmHealthPulseSubtitle") || "Monitor churn, acquisition, and loyalty"} icon="🩺" />
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 16,
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))"
+                      }}
+                    >
+                      {[{
+                        label: t("newThisMonth") || "New this month",
+                        value: newCustomers,
+                        helper: t("crmNewThisMonthHelper") || "Fresh leads added"
+                      }, {
+                        label: t("churnRate") || "Churn rate",
+                        value: `${(churnRate * 100).toFixed(1)}%`,
+                        helper: t("crmChurnHelper") || "Keep below 5%"
+                      }, {
+                        label: t("platinumMembers") || "Platinum members",
+                        value: platinumMembers,
+                        helper: t("crmLoyaltyHelper") || "Top loyalty tier"
+                      }].map((stat) => (
+                        <div
+                          key={stat.label}
+                          style={{
+                            padding: 16,
+                            border: "1px solid var(--color-border)",
+                            borderRadius: "var(--radius-lg)",
+                            background: "var(--color-surface)"
+                          }}
+                        >
+                          <p style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 4 }}>{stat.label}</p>
+                          <div style={{ fontSize: 28, fontWeight: 800 }}>{stat.value}</div>
+                          <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-light)" }}>{stat.helper}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </Card>
+                </>
+              )}
+
+              {filteredCustomers.length > 0 ? (
+                <Card>
+                  <CardHeader title="📋 Customer List" subtitle={`${filteredCustomers.length} ${t("customers") || "customers"}`} />
+                  <Table
+                    columns={[
+                      { key: "customer", header: t("customer") || "Customer" },
+                      { key: "tier", header: t("tier") || "Tier", width: "140px" },
+                      { key: "orders", header: t("orders") || "Orders", width: "100px" },
+                      { key: "ltv", header: t("lifetimeValue") || "Lifetime value", width: "140px" },
+                      { key: "lastPurchase", header: t("lastPurchase") || "Last purchase", width: "130px" },
+                      { key: "status", header: t("status") || "Status", width: "120px" },
+                      { key: "actions", header: t("actions") || "Actions", width: "140px" }
+                    ]}
+                    data={filteredCustomers.map((customer) => ({
+                      _customer: customer,
+                      customer: (
+                        <div>
+                          <div style={{ fontWeight: 600 }}>{customer.name}</div>
+                          <div style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{customer.email}</div>
+                        </div>
+                      ),
+                      tier: (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 20 }}>{getTierEmoji(customer.loyaltyTier)}</span>
+                          <span style={{ fontWeight: 600, color: getTierColor(customer.loyaltyTier) }}>{customer.loyaltyTier}</span>
+                        </div>
+                      ),
+                      orders: <Badge variant="info">{customer.totalOrders}</Badge>,
+                      ltv: (
+                        <span style={{ color: "var(--color-success)", fontWeight: 600 }}>
+                          ${customer.lifetimeValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </span>
+                      ),
+                      lastPurchase: (
+                        <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                          {new Date(customer.lastPurchase).toLocaleDateString()}
+                        </span>
+                      ),
+                      status: customer.isBlacklisted ? <Badge variant="error">{t("blacklisted") || "Blacklisted"}</Badge> : <Badge variant="success">{t("active") || "Active"}</Badge>,
+                      actions: (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedCustomer(customer);
+                            setShowDetailModal(true);
+                          }}
+                        >
+                          {t("viewDetails") || "View details"}
+                        </Button>
+                      )
+                    }))}
+                    onRowClick={(row: any) => {
+                      setSelectedCustomer(row._customer);
+                      setShowDetailModal(true);
+                    }}
+                  />
+                </Card>
+              ) : (
+                <EmptyState
+                  icon="👥"
+                  title={t("noCustomersFound")}
+                  description={t("descriptionAdjustFilters")}
+                  action={
+                    <Button type="button" variant="ghost" onClick={() => { setSearchTerm(""); setTierFilter("all"); }}>
+                      {t("resetFilters") || "Reset filters"}
+                    </Button>
+                  }
+                />
+              )}
+            </>
+          )}
+        </div>
+      </PageLayout>
+
+      {selectedCustomer && (
+        <Modal
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedCustomer(null);
+          }}
+          title={`${t("customer") || "Customer"}: ${selectedCustomer.name}`}
+          size="lg"
+        >
+          <Tabs
+            defaultTab={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { id: "info", label: t("info") || "Info", icon: "👤", content: <></> },
+              { id: "interactions", label: t("interactions") || "Interactions", icon: "💬", badge: interactions?.length, content: <></> },
+              { id: "loyalty", label: t("loyalty") || "Loyalty", icon: "🏆", content: <></> }
+            ]}
+          />
+
+          {activeTab === "info" && (
+            <div style={{ marginTop: 24 }}>
+              <div className="grid grid-2" style={{ gap: 16, marginBottom: 24 }}>
+                <div>
+                  <label className="label">Email</label>
+                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.email}</div>
+                </div>
+                <div>
+                  <label className="label">Phone</label>
+                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.phone || "N/A"}</div>
+                </div>
+                <div>
+                  <label className="label">Total Orders</label>
+                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.totalOrders}</div>
+                </div>
+                <div>
+                  <label className="label">Lifetime Value</label>
+                  <div style={{ fontSize: 15, color: "var(--color-success)", fontWeight: 600 }}>
+                    ${selectedCustomer.lifetimeValue.toLocaleString()}
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Loyalty Tier</label>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 20 }}>{getTierEmoji(selectedCustomer.loyaltyTier)}</span>
+                    <span style={{ fontSize: 15, fontWeight: 600, color: getTierColor(selectedCustomer.loyaltyTier) }}>
+                      {selectedCustomer.loyaltyTier}
+                    </span>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Member Since</label>
+                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>
+                    {new Date(selectedCustomer.createdAt).toLocaleDateString()}
+                  </div>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 12 }}>
+                <Button onClick={() => setShowLoyaltyModal(true)} variant="primary" fullWidth>
+                  Update Loyalty Tier
+                </Button>
+                <Button
+                  onClick={() => handleBlacklist(selectedCustomer.id, !selectedCustomer.isBlacklisted)}
+                  variant={selectedCustomer.isBlacklisted ? "success" : "danger"}
+                  fullWidth
+                >
+                  {selectedCustomer.isBlacklisted ? "Unblacklist" : "Blacklist"}
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {activeTab === "interactions" && (
+            <div style={{ marginTop: 24 }}>
+              <Button
+                onClick={() => setShowAddInteractionModal(true)}
+                variant="primary"
+                fullWidth
+                style={{ marginBottom: 16 }}
+              >
+                + {t("addInteraction")}
+              </Button>
+              {interactions && interactions.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {interactions.map((interaction) => (
+                    <div
+                      key={interaction.id}
+                      style={{
+                        padding: 16,
+                        background: "var(--color-elevated)",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-border)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 20 }}>{getInteractionIcon(interaction.type)}</span>
+                          <Badge variant={interaction.resolved ? "success" : "warning"}>{interaction.type}</Badge>
+                        </div>
+                        <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                          {new Date(interaction.createdAt).toLocaleDateString()}
                         </span>
                       </div>
-                    ),
-                    orders: <Badge variant="info">{customer.totalOrders}</Badge>,
-                    ltv: (
-                      <span style={{ color: "var(--color-success)", fontWeight: 600 }}>
-                        ${customer.lifetimeValue.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                      </span>
-                    ),
-                    lastPurchase: (
-                      <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                        {new Date(customer.lastPurchase).toLocaleDateString()}
-                      </span>
-                    ),
-                    status: customer.isBlacklisted ? (
-                      <Badge variant="error">Blacklisted</Badge>
-                    ) : (
-                      <Badge variant="success">Active</Badge>
-                    ),
-                    actions: (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedCustomer(customer);
-                          setShowDetailModal(true);
-                        }}
-                      >
-                        View Details
-                      </Button>
-                    )
-                  }))}
-                  onRowClick={(row: any) => {
-                    setSelectedCustomer(row._customer);
-                    setShowDetailModal(true);
-                  }}
-                />
-              </Card>
-            ) : (
-              <EmptyState
-                icon="👥"
-                title={t("noCustomersFound")}
-                description={t("descriptionAdjustFilters")}
-              />
-            )}
-          </>
-        )}
-
-        {/* Customer Detail Modal */}
-        {selectedCustomer && (
-          <Modal
-            isOpen={showDetailModal}
-            onClose={() => {
-              setShowDetailModal(false);
-              setSelectedCustomer(null);
-            }}
-            title={`Customer: ${selectedCustomer.name}`}
-            size="lg"
-          >
-            <Tabs
-              defaultTab={activeTab}
-              onChange={setActiveTab}
-              tabs={[
-                { id: "info", label: "Info", icon: "👤", content: <></> },
-                { id: "interactions", label: "Interactions", icon: "💬", badge: interactions?.length, content: <></> },
-                { id: "loyalty", label: "Loyalty", icon: "🏆", content: <></> }
-              ]}
-            />
-
-            {activeTab === "info" && (
-              <div style={{ marginTop: 24 }}>
-                <div className="grid grid-2" style={{ gap: 16, marginBottom: 24 }}>
-                  <div>
-                    <label className="label">Email</label>
-                    <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.email}</div>
-                  </div>
-                  <div>
-                    <label className="label">Phone</label>
-                    <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.phone || "N/A"}</div>
-                  </div>
-                  <div>
-                    <label className="label">Total Orders</label>
-                    <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.totalOrders}</div>
-                  </div>
-                  <div>
-                    <label className="label">Lifetime Value</label>
-                    <div style={{ fontSize: 15, color: "var(--color-success)", fontWeight: 600 }}>
-                      ${selectedCustomer.lifetimeValue.toLocaleString()}
+                      <p style={{ margin: "8px 0", fontSize: 14 }}>{interaction.description}</p>
+                      {!interaction.resolved && (
+                        <Button
+                          variant="success"
+                          size="sm"
+                          onClick={() => handleResolveInteraction(interaction.id)}
+                          disabled={loading}
+                        >
+                          Mark Resolved
+                        </Button>
+                      )}
                     </div>
-                  </div>
-                  <div>
-                    <label className="label">Loyalty Tier</label>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 20 }}>{getTierEmoji(selectedCustomer.loyaltyTier)}</span>
-                      <span style={{ fontSize: 15, fontWeight: 600, color: getTierColor(selectedCustomer.loyaltyTier) }}>
-                        {selectedCustomer.loyaltyTier}
-                      </span>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Member Since</label>
-                    <div style={{ fontSize: 15, color: "var(--color-text)" }}>
-                      {new Date(selectedCustomer.createdAt).toLocaleDateString()}
-                    </div>
-                  </div>
+                  ))}
                 </div>
-                <div style={{ display: "flex", gap: 12 }}>
-                  <Button onClick={() => setShowLoyaltyModal(true)} variant="primary" fullWidth>
-                    Update Loyalty Tier
-                  </Button>
-                  <Button
-                    onClick={() => handleBlacklist(selectedCustomer.id, !selectedCustomer.isBlacklisted)}
-                    variant={selectedCustomer.isBlacklisted ? "success" : "danger"}
-                    fullWidth
-                  >
-                    {selectedCustomer.isBlacklisted ? "Unblacklist" : "Blacklist"}
-                  </Button>
-                </div>
-              </div>
-            )}
+              ) : (
+                <EmptyState icon="💬" title={t("noInteractions")} description={t("addFirstInteraction")} />
+              )}
+            </div>
+          )}
 
-            {activeTab === "interactions" && (
-              <div style={{ marginTop: 24 }}>
-                <Button
-                  onClick={() => setShowAddInteractionModal(true)}
-                  variant="primary"
-                  fullWidth
-                  style={{ marginBottom: 16 }}
-                >
-                  + {t("addInteraction")}
-                </Button>
-                {interactions && interactions.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {interactions.map(interaction => (
-                      <div
-                        key={interaction.id}
-                        style={{
-                          padding: 16,
-                          background: "var(--color-elevated)",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--color-border)"
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 20 }}>{getInteractionIcon(interaction.type)}</span>
-                            <Badge variant={interaction.resolved ? "success" : "warning"}>
-                              {interaction.type}
-                            </Badge>
-                          </div>
-                          <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                            {new Date(interaction.createdAt).toLocaleDateString()}
+          {activeTab === "loyalty" && (
+            <div style={{ marginTop: 24 }}>
+              {loyaltyHistory && loyaltyHistory.length > 0 ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {loyaltyHistory.map((history) => (
+                    <div
+                      key={history.id}
+                      style={{
+                        padding: 16,
+                        background: "var(--color-elevated)",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-border)"
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 16 }}>{getTierEmoji(history.previousTier)}</span>
+                          <span style={{ color: getTierColor(history.previousTier), fontWeight: 600 }}>
+                            {history.previousTier}
+                          </span>
+                          <span style={{ margin: "0 8px", color: "var(--color-text-muted)" }}>→</span>
+                          <span style={{ fontSize: 16 }}>{getTierEmoji(history.newTier)}</span>
+                          <span style={{ color: getTierColor(history.newTier), fontWeight: 600 }}>
+                            {history.newTier}
                           </span>
                         </div>
-                        <p style={{ margin: "8px 0", fontSize: 14 }}>{interaction.description}</p>
-                        {!interaction.resolved && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            onClick={() => handleResolveInteraction(interaction.id)}
-                            disabled={loading}
-                          >
-                            Mark Resolved
-                          </Button>
-                        )}
+                        <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                          {new Date(history.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState icon="💬" title={t("noInteractions")} description={t("addFirstInteraction")} />
-                )}
-              </div>
-            )}
-
-            {activeTab === "loyalty" && (
-              <div style={{ marginTop: 24 }}>
-                {loyaltyHistory && loyaltyHistory.length > 0 ? (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {loyaltyHistory.map(history => (
-                      <div
-                        key={history.id}
-                        style={{
-                          padding: 16,
-                          background: "var(--color-elevated)",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--color-border)"
-                        }}
-                      >
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                            <span style={{ fontSize: 16 }}>{getTierEmoji(history.previousTier)}</span>
-                            <span style={{ color: getTierColor(history.previousTier), fontWeight: 600 }}>
-                              {history.previousTier}
-                            </span>
-                            <span style={{ margin: "0 8px", color: "var(--color-text-muted)" }}>→</span>
-                            <span style={{ fontSize: 16 }}>{getTierEmoji(history.newTier)}</span>
-                            <span style={{ color: getTierColor(history.newTier), fontWeight: 600 }}>
-                              {history.newTier}
-                            </span>
-                          </div>
-                          <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                            {new Date(history.createdAt).toLocaleDateString()}
-                          </span>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>
-                          {history.reason}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <EmptyState icon="🏆" title={t("noLoyaltyHistory")} description={t("loyaltyChangesAppear")} />
-                )}
-              </div>
-            )}
-          </Modal>
-        )}
-
-        {/* Add Interaction Modal */}
-        <Modal
-          isOpen={showAddInteractionModal}
-          onClose={() => {
-            setShowAddInteractionModal(false);
-            setInteractionDesc("");
-          }}
-          title={t("addCustomerInteraction")}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <Select
-              label="Interaction Type"
-              value={interactionType}
-              onChange={(e) => setInteractionType(e.target.value)}
-              options={[
-                { value: "PURCHASE", label: "🛒 Purchase" },
-                { value: "SUPPORT", label: "🎧 Support" },
-                { value: "COMPLAINT", label: "⚠️ Complaint" },
-                { value: "REFUND", label: "💸 Refund" },
-                { value: "INQUIRY", label: "❓ Inquiry" }
-              ]}
-            />
-            <div>
-              <label className="label">Description</label>
-              <textarea
-                className="input"
-                value={interactionDesc}
-                onChange={(e) => setInteractionDesc(e.target.value)}
-                placeholder={t("describeInteraction")}
-                rows={4}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
+                      <p style={{ margin: 0, fontSize: 14, color: "var(--color-text-muted)" }}>{history.reason}</p>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <EmptyState icon="🏆" title={t("noLoyaltyHistory")} description={t("loyaltyChangesAppear")} />
+              )}
             </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Button onClick={handleAddInteraction} variant="primary" fullWidth disabled={loading}>
-                {t("addInteraction")}
-              </Button>
-              <Button onClick={() => setShowAddInteractionModal(false)} variant="ghost" fullWidth>
-                {t("cancel")}
-              </Button>
-            </div>
-          </div>
+          )}
         </Modal>
+      )}
 
-        {/* Update Loyalty Modal */}
-        <Modal
-          isOpen={showLoyaltyModal}
-          onClose={() => {
-            setShowLoyaltyModal(false);
-            setLoyaltyReason("");
-          }}
-          title={t("updateLoyaltyTier")}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <Select
-              label="New Tier"
-              value={newTier}
-              onChange={(e) => setNewTier(e.target.value)}
-              options={[
-                { value: "BRONZE", label: "🥉 Bronze" },
-                { value: "SILVER", label: "🥈 Silver" },
-                { value: "GOLD", label: "🥇 Gold" },
-                { value: "PLATINUM", label: "💎 Platinum" }
-              ]}
+      <Modal
+        isOpen={showAddInteractionModal}
+        onClose={() => {
+          setShowAddInteractionModal(false);
+          setInteractionDesc("");
+        }}
+        title={t("addCustomerInteraction")}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Select
+            label="Interaction Type"
+            value={interactionType}
+            onChange={(e) => setInteractionType(e.target.value)}
+            options={[
+              { value: "PURCHASE", label: "🛒 Purchase" },
+              { value: "SUPPORT", label: "🎧 Support" },
+              { value: "COMPLAINT", label: "⚠️ Complaint" },
+              { value: "REFUND", label: "💸 Refund" },
+              { value: "INQUIRY", label: "❓ Inquiry" }
+            ]}
+          />
+          <div>
+            <label className="label">Description</label>
+            <textarea
+              className="input"
+              value={interactionDesc}
+              onChange={(e) => setInteractionDesc(e.target.value)}
+              placeholder={t("describeInteraction")}
+              rows={4}
+              style={{ width: '100%', resize: 'vertical' }}
             />
-            <div>
-              <label className="label">Reason</label>
-              <textarea
-                className="input"
-                value={loyaltyReason}
-                onChange={(e) => setLoyaltyReason(e.target.value)}
-                placeholder={t("whyTierChanged")}
-                rows={3}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Button onClick={handleUpdateLoyalty} variant="primary" fullWidth disabled={loading}>
-                Update Tier
-              </Button>
-              <Button onClick={() => setShowLoyaltyModal(false)} variant="ghost" fullWidth>
-                Cancel
-              </Button>
-            </div>
           </div>
-        </Modal>
+          <div style={{ display: "flex", gap: 12 }}>
+            <Button onClick={handleAddInteraction} variant="primary" fullWidth disabled={loading}>
+              {t("addInteraction")}
+            </Button>
+            <Button onClick={() => setShowAddInteractionModal(false)} variant="ghost" fullWidth>
+              {t("cancel")}
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
-        <Toast />
+      <Modal
+        isOpen={showLoyaltyModal}
+        onClose={() => {
+          setShowLoyaltyModal(false);
+          setLoyaltyReason("");
+        }}
+        title={t("updateLoyaltyTier")}
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <Select
+            label="New Tier"
+            value={newTier}
+            onChange={(e) => setNewTier(e.target.value)}
+            options={[
+              { value: "BRONZE", label: "🥉 Bronze" },
+              { value: "SILVER", label: "🥈 Silver" },
+              { value: "GOLD", label: "🥇 Gold" },
+              { value: "PLATINUM", label: "💎 Platinum" }
+            ]}
+          />
+          <div>
+            <label className="label">Reason</label>
+            <textarea
+              className="input"
+              value={loyaltyReason}
+              onChange={(e) => setLoyaltyReason(e.target.value)}
+              placeholder={t("whyTierChanged")}
+              rows={3}
+              style={{ width: '100%', resize: 'vertical' }}
+            />
+          </div>
+          <div style={{ display: "flex", gap: 12 }}>
+            <Button onClick={handleUpdateLoyalty} variant="primary" fullWidth disabled={loading}>
+              Update Tier
+            </Button>
+            <Button onClick={() => setShowLoyaltyModal(false)} variant="ghost" fullWidth>
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
 
-        <OnboardingTour 
-          pageName="crm" 
-          steps={crmTour} 
-          onComplete={() => setShowTour(false)} 
-        />
-        {!showTour && <HelpButton onClick={() => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem("tour_completed_crm");
-            setShowTour(true);
-            window.location.reload();
-          }
-        }} />}
-      </div>
-    </div>
+      <Toast />
+
+      <OnboardingTour
+        pageName="crm"
+        steps={crmTour}
+        onComplete={() => setShowTour(false)}
+      />
+      {!showTour && <HelpButton onClick={handleReplayTour} />}
+    </>
   );
 }
 
