@@ -16,7 +16,8 @@ module.exports = {
     "@typescript-eslint/no-unused-vars": "off",
     "no-useless-escape": "off",
     "react/no-unknown-property": "off",
-    "react/no-unescaped-entities": "off"
+    "react/no-unescaped-entities": "off",
+    "@typescript-eslint/no-var-requires": "off"
   },
   ignorePatterns: [
     "node_modules/",
@@ -45,7 +46,9 @@ module.exports = {
       rules: {
         "react/react-in-jsx-scope": "off",
         "react/jsx-uses-react": "off",
-        "@next/next/no-html-link-for-pages": "off"
+        "@next/next/no-html-link-for-pages": "off",
+        "react/no-unknown-property": "off",
+        "react/no-unescaped-entities": "off"
       }
     },
     {
