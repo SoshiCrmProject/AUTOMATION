@@ -3,7 +3,7 @@ import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
-import AppNav from "../components/AppNav";
+import PageLayout from "../components/PageLayout";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { analyticsTour } from "../components/tourConfigs";
 import { 
@@ -13,7 +13,8 @@ import {
   Button, 
   Alert, 
   LoadingSpinner,
-  Badge
+  Badge,
+  Select
 } from "../components/ui/index";
 import { 
   LineChart, 
@@ -172,6 +173,14 @@ export default function Analytics() {
   const alertErrors = effectiveDashboard?.alerts?.errors ?? 0;
   const alertReturns = effectiveDashboard?.alerts?.returns ?? 0;
 
+  const handleReplayTour = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("tour_completed_analytics");
+      setShowTour(true);
+      window.location.reload();
+    }
+  };
+
   // Prepare chart data
   const chartData = trendsArray.map(trend => ({
     date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
@@ -180,57 +189,149 @@ export default function Analytics() {
     orders: trend.totalOrders,
     successRate: trend.totalOrders > 0 ? (trend.successfulOrders / trend.totalOrders) * 100 : 0
   }));
+  const heroBadge = (
+    <Badge variant={useFallbackData ? "warning" : "info"}>
+      {useFallbackData ? t("analyticsSampleDataTitle") : t("liveMetrics") || "Live metrics"}
+    </Badge>
+  );
+
+  const heroAside = (
+    <div
+      style={{
+        display: "grid",
+        gap: 16,
+        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))"
+      }}
+    >
+      {[{
+        label: t("weeklyRevenue"),
+        value: `¥${Number(weekRevenue).toLocaleString()}`,
+        helper: t("last7DaysPerformance") || "Last 7 days"
+      }, {
+        label: t("weeklyOrders"),
+        value: weekOrders,
+        helper: t("ordersPastWeek") || "Orders past week"
+      }, {
+        label: t("conversionRate"),
+        value: `${(weekConversionRate * 100).toFixed(1)}%`,
+        helper: t("conversionHelper") || "Storewide conversion"
+      }].map((stat) => (
+        <div key={stat.label} className="stat-card" style={{ padding: 16 }}>
+          <p style={{ fontSize: 12, textTransform: "uppercase", color: "var(--color-text-light)", marginBottom: 6 }}>{stat.label}</p>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{stat.value}</div>
+          <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: 13 }}>{stat.helper}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {useFallbackData
+        ? t("analyticsSampleDataDesc")
+        : t("analyticsLiveDataHint") || "Data refreshes every 15 minutes from the analytics API."}
+    </span>
+  );
+
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+      <Select
+        fullWidth={false}
+        value={selectedPeriod}
+        onChange={(event) => setSelectedPeriod(event.target.value as '7' | '30' | '90')}
+        options={[
+          { value: "7", label: t("last7Days") || "Last 7 days" },
+          { value: "30", label: t("last30Days") || "Last 30 days" },
+          { value: "90", label: t("last90Days") || "Last 90 days" }
+        ]}
+        style={{ marginBottom: 0, minWidth: 180 }}
+      />
+      <Button type="button" variant="ghost" onClick={() => window.location.reload()}>
+        🔄 {t("refreshData") || "Refresh"}
+      </Button>
+      <Badge variant={useFallbackData ? "warning" : "success"}>
+        {useFallbackData ? t("sampleData") || "Sample data" : t("liveData") || "Live data"}
+      </Badge>
+    </div>
+  );
+
+  const actions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={() => window.open("/api/analytics/export", "_blank")}>
+        ⬇️ {t("exportCsv") || "Export CSV"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleReplayTour}>
+        🧭 {t("replayTour") || "Replay tour"}
+      </Button>
+    </div>
+  );
+
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader title={t("liveAlerts") || "Live alerts"} subtitle={t("alertSummary") || "Operational signals"} icon="🚨" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {[{
+            label: t("lowStock") || "Low stock",
+            value: alertLowStock,
+            variant: alertLowStock > 0 ? "warning" : "default"
+          }, {
+            label: t("navErrors") || "Errors",
+            value: alertErrors,
+            variant: alertErrors > 0 ? "error" : "default"
+          }, {
+            label: t("returns") || "Returns",
+            value: alertReturns,
+            variant: alertReturns > 0 ? "info" : "default"
+          }].map((alert) => (
+            <div key={alert.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ fontSize: 14, color: "var(--color-text)" }}>{alert.label}</span>
+              <Badge variant={alert.variant}>{alert.value}</Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
+      <Card hover={false}>
+        <CardHeader title={t("analyticsQuickActions") || "Quick actions"} subtitle={t("automationShortcuts") || "Jump into automations"} icon="⚙️" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/ops")}>
+            🛠️ {t("navOps") || "Operations"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/errors")}>
+            ❗ {t("navErrors") || "Errors"}
+          </Button>
+          <Button type="button" onClick={() => window.open("mailto:data@automation?subject=Analytics%20Report", "_blank")}>
+            📧 {t("scheduleDigest") || "Schedule digest"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
 
   return (
-    <div className="shell">
-      <AppNav activeHref="/analytics" />
-      <div className="container">
-        {/* Hero Section */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '40px',
-          marginBottom: '32px',
-          border: '1px solid var(--color-border)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
-            <div>
-              <h1 style={{ fontSize: '42px', margin: '0 0 12px 0', fontWeight: 900, background: 'linear-gradient(135deg, #10b981, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                📊 {t("navAnalytics") || "Analytics & Insights"}
-              </h1>
-              <p style={{ color: "var(--color-text-muted)", margin: 0, fontSize: '16px' }}>
-                Track performance, monitor trends, and optimize your dropshipping operations
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <select 
-                value={selectedPeriod}
-                onChange={(e) => setSelectedPeriod(e.target.value as any)}
-                className="select"
-                style={{ width: 'auto', marginBottom: 0 }}
-              >
-                <option value="7">{t("last7Days")}</option>
-                <option value="30">{t("last30Days")}</option>
-                <option value="90">{t("last90Days")}</option>
-              </select>
-              <Button onClick={() => window.location.reload()} variant="ghost">
-                🔄 {t("refreshData")}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Alert Messages */}
+    <>
+      <PageLayout
+        activeHref="/analytics"
+        title={`📊 ${t("navAnalytics") || "Analytics & Insights"}`}
+        description={t("analyticsHeroDesc") || "Track performance, monitor trends, and optimize your operations."}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        actions={actions}
+        toolbar={toolbar}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)"
+      >
         {(alertLowStock > 0 || alertErrors > 0 || alertReturns > 0) && (
           <Alert variant="warning" title={t("attentionRequired")}>
-            {alertLowStock > 0 && `${alertLowStock} products low on stock. `}
-            {alertErrors > 0 && `${alertErrors} errors in the last 7 days. `}
-            {alertReturns > 0 && `${alertReturns} pending returns.`}
+            {alertLowStock > 0 && `${alertLowStock} ${t("productsLowStock") || "products low on stock"}. `}
+            {alertErrors > 0 && `${alertErrors} ${t("errorsInPeriod") || "errors in the last 7 days"}. `}
+            {alertReturns > 0 && `${alertReturns} ${t("pendingReturns") || "pending returns"}.`}
           </Alert>
         )}
 
         {useFallbackData && (
-          <Alert variant="info" title={t("analyticsSampleDataTitle")}> 
+          <Alert variant="info" title={t("analyticsSampleDataTitle")}>
             {t("analyticsSampleDataDesc")}
           </Alert>
         )}
@@ -238,35 +339,41 @@ export default function Analytics() {
         {isLoading ? (
           <LoadingSpinner size="lg" text={t("loadingAnalyticsData")} />
         ) : !useFallbackData && (dashError || trendError) ? (
-          <Alert variant="error" title={t("failedToLoadData") }>
+          <Alert variant="error" title={t("failedToLoadData")}>
             {t("unableToFetchAnalytics")}
           </Alert>
         ) : (
           <div>
-            {/* Key Metrics Cards */}
-            <div className="grid grid-4" style={{ marginBottom: '32px' }}>
-              <StatCard 
+            <div
+              style={{
+                display: "grid",
+                gap: 16,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                marginBottom: 32
+              }}
+            >
+              <StatCard
                 label={t("weeklyRevenue")}
                 value={`¥${Number(weekRevenue).toLocaleString()}`}
                 trend={8}
                 icon="💰"
                 color="success"
               />
-              <StatCard 
+              <StatCard
                 label={t("weeklyOrders")}
                 value={weekOrders}
                 trend={12}
                 icon="📦"
                 color="primary"
               />
-              <StatCard 
+              <StatCard
                 label={t("weeklyProfit")}
                 value={`¥${Number(weekProfit).toLocaleString()}`}
                 trend={6}
                 icon="📈"
                 color="info"
               />
-              <StatCard 
+              <StatCard
                 label={t("conversionRate")}
                 value={`${(weekConversionRate * 100).toFixed(1)}%`}
                 trend={-2}
@@ -275,14 +382,20 @@ export default function Analytics() {
               />
             </div>
 
-            {/* Monthly Overview */}
             <Card>
-              <CardHeader 
+              <CardHeader
                 title={t("monthlyOverview")}
                 subtitle={t("last30DaysPerformance")}
-                icon="📅" 
+                icon="📅"
               />
-              <div className="grid grid-3" style={{ gap: '24px', padding: '16px 0' }}>
+              <div
+                style={{
+                  display: "grid",
+                  gap: 24,
+                  gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                  padding: "16px 0"
+                }}
+              >
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '8px' }}>
                     {t("totalOrders")}
@@ -310,17 +423,15 @@ export default function Analytics() {
               </div>
             </Card>
 
-            {/* Profit Trends */}
             {trendsArray.length > 0 && (
               <div style={{ marginTop: '32px' }}>
                 <Card>
-                  <CardHeader 
+                  <CardHeader
                     title={t("revenueAndProfitAnalytics")}
                     subtitle={t("interactiveCharts").replace('{days}', selectedPeriod)}
-                    icon="📊" 
+                    icon="📊"
                   />
-                  
-                  {/* Revenue & Profit Line Chart */}
+
                   <div style={{ padding: '20px 0', marginBottom: '32px' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
                       {t("revenueVsProfitTrend")}
@@ -330,27 +441,27 @@ export default function Analytics() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
                         <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'var(--color-elevated)', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--color-elevated)',
                             border: '1px solid var(--color-border)',
                             borderRadius: '8px',
                             padding: '12px'
                           }}
                         />
                         <Legend />
-                        <Area 
-                          type="monotone" 
-                          dataKey="revenue" 
-                          stroke="#10b981" 
+                        <Area
+                          type="monotone"
+                          dataKey="revenue"
+                          stroke="#10b981"
                           fill="#10b981"
                           fillOpacity={0.3}
                           name="Revenue (¥)"
                         />
-                        <Area 
-                          type="monotone" 
-                          dataKey="profit" 
-                          stroke="#3b82f6" 
+                        <Area
+                          type="monotone"
+                          dataKey="profit"
+                          stroke="#3b82f6"
                           fill="#3b82f6"
                           fillOpacity={0.3}
                           name="Profit (¥)"
@@ -359,7 +470,6 @@ export default function Analytics() {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Orders Bar Chart */}
                   <div style={{ padding: '20px 0', marginBottom: '32px' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
                       {t("dailyOrderVolume")}
@@ -369,9 +479,9 @@ export default function Analytics() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
                         <YAxis stroke="#64748b" style={{ fontSize: '12px' }} />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'var(--color-elevated)', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--color-elevated)',
                             border: '1px solid var(--color-border)',
                             borderRadius: '8px'
                           }}
@@ -382,7 +492,6 @@ export default function Analytics() {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Success Rate Chart */}
                   <div style={{ padding: '20px 0' }}>
                     <h4 style={{ fontSize: '16px', marginBottom: '16px', paddingLeft: '20px' }}>
                       {t("orderSuccessRateTrend")}
@@ -392,19 +501,19 @@ export default function Analytics() {
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
                         <XAxis dataKey="date" stroke="#64748b" style={{ fontSize: '12px' }} />
                         <YAxis stroke="#64748b" style={{ fontSize: '12px' }} domain={[0, 100]} />
-                        <Tooltip 
-                          contentStyle={{ 
-                            backgroundColor: 'var(--color-elevated)', 
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: 'var(--color-elevated)',
                             border: '1px solid var(--color-border)',
                             borderRadius: '8px'
                           }}
                           formatter={(value: any) => `${value.toFixed(1)}%`}
                         />
                         <Legend />
-                        <Line 
-                          type="monotone" 
-                          dataKey="successRate" 
-                          stroke="#f59e0b" 
+                        <Line
+                          type="monotone"
+                          dataKey="successRate"
+                          stroke="#f59e0b"
                           strokeWidth={3}
                           name="Success Rate (%)"
                           dot={{ fill: '#f59e0b', r: 4 }}
@@ -413,15 +522,14 @@ export default function Analytics() {
                     </ResponsiveContainer>
                   </div>
 
-                  {/* Data Table */}
                   <div style={{ padding: '20px', borderTop: '1px solid var(--color-border)' }}>
                     <h4 style={{ fontSize: '14px', color: 'var(--color-text-muted)', marginBottom: '16px' }}>
                       {t("detailedBreakdown")}
                     </h4>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table style={{ width: '100%', fontSize: '13px' }}>
+                    <div className="table-responsive">
+                      <table className="table" style={{ fontSize: '13px' }}>
                         <thead>
-                          <tr style={{ borderBottom: '2px solid var(--color-border)' }}>
+                          <tr>
                             <th style={{ padding: '12px', textAlign: 'left' }}>{t("date")}</th>
                             <th style={{ padding: '12px', textAlign: 'right' }}>{t("orders")}</th>
                             <th style={{ padding: '12px', textAlign: 'right' }}>{t("revenue")}</th>
@@ -431,7 +539,7 @@ export default function Analytics() {
                         </thead>
                         <tbody>
                           {chartData.slice(0, 10).map((row, idx) => (
-                            <tr key={idx} style={{ borderBottom: '1px solid var(--color-border)' }}>
+                            <tr key={idx}>
                               <td style={{ padding: '12px' }}>{row.date}</td>
                               <td style={{ padding: '12px', textAlign: 'right' }}>
                                 <Badge variant="info">{row.orders}</Badge>
@@ -457,18 +565,17 @@ export default function Analytics() {
               </div>
             )}
 
-            {/* AI Insights */}
             <div style={{ marginTop: '32px' }}>
               <Card>
-                <CardHeader 
+                <CardHeader
                   title={t("aiPoweredInsights")}
                   subtitle={t("dataDrivenRecommendations")}
-                  icon="💡" 
+                  icon="💡"
                 />
                 <div style={{ padding: '16px 0' }}>
                   <ul style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
                     <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
-                      <strong>Revenue Growth:</strong> Your weekly revenue is trending {weekRevenue > 10000 ? 'positively' : 'steadily'}. 
+                      <strong>Revenue Growth:</strong> Your weekly revenue is trending {weekRevenue > 10000 ? 'positively' : 'steadily'}.
                       {weekRevenue > 10000 ? ' Consider scaling your operations.' : ' Focus on marketing and product optimization.'}
                     </li>
                     <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
@@ -476,7 +583,7 @@ export default function Analytics() {
                       {weekConversionRate <= 0.05 ? ' Try improving product descriptions and pricing.' : ' Maintain current strategies.'}
                     </li>
                     <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
-                      <strong>Order Volume:</strong> {weekOrders} orders this week. 
+                      <strong>Order Volume:</strong> {weekOrders} orders this week.
                       {weekOrders > 50 ? ' High volume detected - ensure inventory levels are adequate.' : ' Consider promotional campaigns to boost orders.'}
                     </li>
                     {alertLowStock > 0 && (
@@ -490,21 +597,15 @@ export default function Analytics() {
             </div>
           </div>
         )}
+      </PageLayout>
 
-        <OnboardingTour 
-          pageName="analytics" 
-          steps={analyticsTour} 
-          onComplete={() => setShowTour(false)} 
-        />
-        {!showTour && <HelpButton onClick={() => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem("tour_completed_analytics");
-            setShowTour(true);
-            window.location.reload();
-          }
-        }} />}
-      </div>
-    </div>
+      <OnboardingTour
+        pageName="analytics"
+        steps={analyticsTour}
+        onComplete={() => setShowTour(false)}
+      />
+      {!showTour && <HelpButton onClick={handleReplayTour} />}
+    </>
   );
 }
 

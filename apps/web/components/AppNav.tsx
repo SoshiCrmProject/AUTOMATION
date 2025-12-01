@@ -1,17 +1,23 @@
 import Link from "next/link";
+import { useRouter } from "next/router";
 import LanguageSelector from "./LanguageSelector";
 import { useTranslation } from "next-i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AUTH_CHANGE_EVENT } from "../lib/authEvents";
+
+const NAV_BREAKPOINT = 1180;
 
 export default function AppNav({ activeHref }: { activeHref?: string }) {
   const { t } = useTranslation("common");
+  const router = useRouter();
   const [hasToken, setHasToken] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isCompactNav, setIsCompactNav] = useState(false);
   const [navLinksId] = useState(() => `primary-navigation-${Math.random().toString(36).slice(2)}`);
-  
+  const [searchValue, setSearchValue] = useState("");
+  const [scrolled, setScrolled] = useState(false);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -33,11 +39,17 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const resizeHandler = () => {
-      setIsCompactNav(window.innerWidth <= 1280);
+      setIsCompactNav(window.innerWidth <= NAV_BREAKPOINT);
     };
+    const scrollHandler = () => setScrolled(window.scrollY > 12);
     resizeHandler();
+    scrollHandler();
     window.addEventListener("resize", resizeHandler);
-    return () => window.removeEventListener("resize", resizeHandler);
+    window.addEventListener("scroll", scrollHandler);
+    return () => {
+      window.removeEventListener("resize", resizeHandler);
+      window.removeEventListener("scroll", scrollHandler);
+    };
   }, []);
 
   useEffect(() => {
@@ -57,48 +69,114 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
     return () => window.removeEventListener("keydown", handleKey);
   }, [mobileMenuOpen]);
 
-  const links = [
-    { href: "/", label: t("navHome"), icon: "🏠" },
-    { href: "/dashboard", label: t("navDashboard"), icon: "📊" },
-    { href: "/analytics", label: t("navAnalytics"), icon: "📈" },
-    { href: "/inventory", label: t("navInventory"), icon: "📦" },
-    { href: "/crm", label: t("navCRM"), icon: "👥" },
-    { href: "/orders", label: t("navOrders"), icon: "🛒" },
-    { href: "/calculator", label: t("navCalculator"), icon: "💰" },
-    { href: "/scraper", label: t("navScraper"), icon: "🔍" },
-    { href: "/settings", label: t("navSettings"), icon: "⚙️" },
-    { href: "/errors", label: t("navErrors"), icon: "⚠️" },
-    { href: "/review", label: t("navReview"), icon: "✅" },
-    { href: "/ops", label: t("navOps"), icon: "🔧" },
-    { href: "/pricing", label: t("navPricing"), icon: "💹" },
-    { href: "/mappings", label: t("navMappings"), icon: "🔗" },
-    { href: "/admin/users", label: t("navAdmin"), icon: "👤" }
-  ];
-  
-  return (
-    <header className="nav" role="banner">
-      <div style={{ 
-        fontWeight: 800, 
-        fontSize: 20,
-        background: "linear-gradient(135deg, var(--color-primary), var(--color-secondary))",
-        WebkitBackgroundClip: "text",
-        WebkitTextFillColor: "transparent",
-        backgroundClip: "text"
-      }}>
-        🚀 AutoShip X
+  const links = useMemo(
+    () => [
+      { href: "/", label: t("navHome"), icon: "🏠" },
+      { href: "/dashboard", label: t("navDashboard"), icon: "📊" },
+      { href: "/analytics", label: t("navAnalytics"), icon: "📈" },
+      { href: "/inventory", label: t("navInventory"), icon: "📦" },
+      { href: "/crm", label: t("navCRM"), icon: "👥" },
+      { href: "/orders", label: t("navOrders"), icon: "🛒" },
+      { href: "/calculator", label: t("navCalculator"), icon: "💰" },
+      { href: "/scraper", label: t("navScraper"), icon: "🔍" },
+      { href: "/settings", label: t("navSettings"), icon: "⚙️" },
+      { href: "/errors", label: t("navErrors"), icon: "⚠️" },
+      { href: "/review", label: t("navReview"), icon: "✅" },
+      { href: "/ops", label: t("navOps"), icon: "🔧" },
+      { href: "/pricing", label: t("navPricing"), icon: "💹" },
+      { href: "/mappings", label: t("navMappings"), icon: "🔗" },
+      { href: "/admin/users", label: t("navAdmin"), icon: "👤" }
+    ],
+    [t]
+  );
+
+  const visibleLinks = searchValue
+    ? links.filter((link) => link.label?.toLowerCase().includes(searchValue.toLowerCase()))
+    : links;
+
+  const handleNavSearch = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      if (visibleLinks.length === 1) {
+        router.push(visibleLinks[0].href);
+        setSearchValue("");
+        setMobileMenuOpen(false);
+        return;
+      }
+      if (searchValue.trim()) {
+        router.push(`/search?query=${encodeURIComponent(searchValue.trim())}`);
+        setSearchValue("");
+        setMobileMenuOpen(false);
+      }
+    }
+  };
+
+  const navStatusPill = (
+    <span className="nav-status-pill" aria-live="polite">
+      <span className="nav-status-dot" />
+      {t("systemOperational") || "Systems nominal"}
+    </span>
+  );
+
+  const authCtas =
+    authChecked && !hasToken ? (
+      <div className="nav-auth-ctas">
+        <Link
+          href="/login"
+          className="btn btn-ghost"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          {t("login")}
+        </Link>
+        <Link
+          href="/signup"
+          className="btn"
+          onClick={() => setMobileMenuOpen(false)}
+        >
+          {t("signup")}
+        </Link>
       </div>
-      
-      {/* Mobile Menu Toggle */}
-      <button 
-        className={`mobile-menu-toggle ${isCompactNav ? "is-visible" : ""}`}
-        onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-        aria-label="Toggle mobile menu"
-        aria-expanded={mobileMenuOpen}
-        aria-controls={navLinksId}
-      >
-        {mobileMenuOpen ? "✕" : "☰"}
-      </button>
-      
+    ) : null;
+
+  return (
+    <header className={`nav ${scrolled ? "nav--scrolled" : ""}`} role="banner">
+      <div className="nav__inner">
+        <div className="nav__brand">
+          <div className="nav__brand-mark">🚀</div>
+          <div>
+            <div className="nav__brand-title">AutoShip X</div>
+            <div className="nav__brand-subtitle">{t("navTagline") || "Automation Control Center"}</div>
+          </div>
+        </div>
+        {navStatusPill}
+        <div className="nav__actions-desktop">
+          <button
+            type="button"
+            className="nav-ghost-action"
+            onClick={() => router.push("/notifications")}
+          >
+            🔔 {t("notifications")}
+          </button>
+          <button
+            type="button"
+            className="nav-ghost-action"
+            onClick={() => router.push("/ops")}
+          >
+            🛟 {t("contactOps") || "Ops Center"}
+          </button>
+          <LanguageSelector />
+        </div>
+        <button
+          className={`mobile-menu-toggle ${isCompactNav ? "is-visible" : ""}`}
+          onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          aria-label="Toggle navigation menu"
+          aria-expanded={mobileMenuOpen}
+          aria-controls={navLinksId}
+        >
+          {mobileMenuOpen ? "✕" : "☰"}
+        </button>
+      </div>
+
       <div
         id={navLinksId}
         className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""} ${
@@ -107,49 +185,43 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
         role="navigation"
         aria-label={t("primaryNavigation", { defaultValue: "Primary navigation" })}
       >
-        {links.map((l) => (
-          <Link
-            key={l.href}
-            href={l.href}
-            onClick={() => setMobileMenuOpen(false)}
-            style={{
-              fontWeight: l.href === activeHref ? 700 : 500,
-              color: l.href === activeHref ? "var(--color-text)" : "var(--color-text-muted)",
-              background: l.href === activeHref ? "var(--color-elevated)" : "transparent",
-              display: "flex",
-              alignItems: "center",
-              gap: 6
-            }}
-          >
-            <span className="nav-link-icon emoji-icon" aria-hidden="true">{l.icon}</span>
-            {l.label}
-          </Link>
-        ))}
-        {authChecked && !hasToken && (
-          <>
-            <Link 
-              href="/login" 
-              className="btn btn-ghost"
+        <div className="nav-search">
+          <input
+            type="text"
+            placeholder={t("jumpToPage") || "Jump to a page"}
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            onKeyDown={handleNavSearch}
+            aria-label={t("jumpToPage") || "Jump to page"}
+          />
+          <span className="nav-search-hint">↵</span>
+        </div>
+
+        <div className="nav-links-scroll">
+          {visibleLinks.length === 0 && (
+            <p className="nav-links-empty">{t("noResults") || "No matches"}</p>
+          )}
+          {visibleLinks.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
               onClick={() => setMobileMenuOpen(false)}
-              style={{ 
-                fontWeight: activeHref === "/login" ? 700 : 500,
-                marginLeft: 8
-              }}
+              className={`nav-link ${link.href === activeHref ? "is-active" : ""}`}
             >
-              {t("login")}
+              <span className="nav-link-icon" aria-hidden="true">
+                {link.icon}
+              </span>
+              <span>{link.label}</span>
             </Link>
-            <Link 
-              href="/signup" 
-              className="btn"
-              onClick={() => setMobileMenuOpen(false)}
-              style={{ fontWeight: activeHref === "/signup" ? 700 : 500 }}
-            >
-              {t("signup")}
-            </Link>
-          </>
-        )}
-        <LanguageSelector />
+          ))}
+        </div>
+
+        <div className="nav__actions-mobile">
+          {authCtas}
+        </div>
       </div>
+
+      {!isCompactNav && authCtas}
     </header>
   );
 }
