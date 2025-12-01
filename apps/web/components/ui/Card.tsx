@@ -53,7 +53,11 @@ export const CardHeader: React.FC<CardHeaderProps> = ({ title, subtitle, action,
           alignItems: 'center',
           gap: '10px'
         }}>
-          {icon && <span style={{ fontSize: '24px' }}>{icon}</span>}
+          {icon && (
+            <span className="card-header__icon emoji-icon" aria-hidden="true">
+              {icon}
+            </span>
+          )}
           {title}
         </h3>
         {subtitle && (
@@ -101,11 +105,11 @@ export const StatCard: React.FC<StatCardProps> = ({ label, value, trend, icon, c
           {label}
         </span>
         {icon && (
-          <span style={{ 
-            fontSize: '32px', 
-            opacity: 0.2,
-            color: colorMap[color]
-          }}>
+          <span
+            className="stat-card__icon emoji-icon"
+            aria-hidden="true"
+            style={{ color: colorMap[color] }}
+          >
             {icon}
           </span>
         )}

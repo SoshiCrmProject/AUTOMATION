@@ -85,14 +85,8 @@ export default function Dashboard() {
       <AppNav activeHref="/dashboard" />
       <div className="container">
         {/* Enhanced Hero Section */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(139, 92, 246, 0.08) 100%)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '40px',
-          marginBottom: '32px',
-          border: '1px solid var(--color-border)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
+        <div className="dashboard-hero page-section">
+          <div className="dashboard-hero__layout">
             <div>
               <h1 style={{ fontSize: '42px', margin: '0 0 12px 0', fontWeight: 900, background: 'linear-gradient(135deg, var(--color-primary), var(--color-secondary))', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 🎯 {t("navDashboard") || "Dashboard"}
@@ -101,7 +95,7 @@ export default function Dashboard() {
                 Monitor your dropshipping operations in real-time
               </p>
             </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <div className="dashboard-hero__actions">
               <select 
                 value={selectedPeriod}
                 onChange={(e) => setSelectedPeriod(e.target.value as any)}
@@ -137,7 +131,7 @@ export default function Dashboard() {
         ) : (
           <>
             {/* Key Metrics Cards */}
-            <div className="grid grid-4" style={{ marginBottom: '32px' }}>
+            <div className="grid grid-4 page-section">
               <StatCard 
                 label={t("statusProcessed") || "Processed Orders"}
                 value={processedCount}
@@ -169,7 +163,7 @@ export default function Dashboard() {
             </div>
 
             {/* Charts Section */}
-            <div className="grid grid-2" style={{ marginBottom: '32px' }}>
+            <div className="grid grid-2 page-section">
               <Card>
                 <CardHeader title={t("orderStatusDistribution")} icon="📊" />
                 <SimpleBarChart data={statusChartData} height="250px" />
@@ -182,7 +176,7 @@ export default function Dashboard() {
             </div>
 
             {/* Tabs Section */}
-            <div style={{ marginBottom: '32px' }}>
+            <div className="page-section">
               <Card>
               <Tabs
                 tabs={[

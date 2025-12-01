@@ -37,10 +37,10 @@ export default function Home() {
           </p>
           <div style={{ display: "flex", gap: 16, marginTop: 32, justifyContent: "center", flexWrap: "wrap" }}>
             <Link className="btn" href="/signup" style={{ fontSize: 16, padding: "14px 32px" }}>
-              🚀 {t("signup")}
+              🚀 {t("ctaGetStarted")}
             </Link>
             <Link className="btn btn-ghost" href="/login" style={{ fontSize: 16, padding: "14px 32px" }}>
-              {t("login")}
+              {t("ctaLogin")}
             </Link>
             <Link className="btn btn-ghost" href="/dashboard" style={{ fontSize: 16, padding: "14px 32px" }}>
               {t("navDashboard")}
@@ -105,7 +105,7 @@ export default function Home() {
                 <li>{t("pricingStarterItem3")}</li>
               </ul>
               <Link href="/signup" className="btn" style={{ width: "100%", marginTop: 16 }}>
-                Get Started
+                {t("ctaGetStarted")}
               </Link>
             </div>
             <div className="card" style={{ 
@@ -131,7 +131,7 @@ export default function Home() {
                 background: "white",
                 color: "var(--color-primary)"
               }}>
-                Go Pro
+                {t("ctaGoPro")}
               </Link>
             </div>
             <div className="card" style={{ background: "linear-gradient(135deg, var(--color-surface), var(--color-elevated))" }}>
@@ -147,7 +147,7 @@ export default function Home() {
                 <li>{t("pricingEntItem3")}</li>
               </ul>
               <Link href="/settings" className="btn btn-ghost" style={{ width: "100%", marginTop: 16 }}>
-                Contact Sales
+                {t("ctaContactSales")}
               </Link>
             </div>
           </div>
@@ -191,7 +191,7 @@ export default function Home() {
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
             <Link href="/dashboard" className="btn btn-ghost">{t("navDashboard")}</Link>
-            <Link href="/analytics" className="btn btn-ghost">Analytics</Link>
+            <Link href="/analytics" className="btn btn-ghost">{t("navAnalytics")}</Link>
             <Link href="/settings" className="btn btn-ghost">{t("navSettings")}</Link>
             <LanguageSwitcher />
           </div>
@@ -204,7 +204,7 @@ export default function Home() {
 function FeatureCard({ icon, title, desc }: { icon: string; title: string; desc: string }) {
   return (
     <div className="card" style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 48, marginBottom: 16 }}>{icon}</div>
+      <div className="feature-card__icon emoji-icon" aria-hidden="true">{icon}</div>
       <h3 style={{ marginTop: 0, marginBottom: 12 }}>{title}</h3>
       <p style={{ marginBottom: 0, color: "var(--color-text-muted)", lineHeight: 1.6 }}>{desc}</p>
     </div>

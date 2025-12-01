@@ -4,6 +4,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import Link from "next/link";
 import api from "../lib/apiClient";
+import { notifyAuthChange } from "../lib/authEvents";
 
 export default function Signup() {
   const { t, i18n } = useTranslation("common");
@@ -43,6 +44,7 @@ export default function Signup() {
     try {
       const res = await api.post("/auth/signup", { email, password, locale: i18n.language || "en" });
       localStorage.setItem("token", res.data.token);
+      notifyAuthChange();
       window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.response?.data?.error ?? t("signupFailed"));

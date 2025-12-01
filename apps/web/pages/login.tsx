@@ -4,6 +4,7 @@ import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import LanguageSwitcher from "../components/LanguageSwitcher";
 import Link from "next/link";
 import api from "../lib/apiClient";
+import { notifyAuthChange } from "../lib/authEvents";
 
 export default function Login() {
   const { t } = useTranslation("common");
@@ -33,6 +34,7 @@ export default function Login() {
         sessionStorage.setItem("token", res.data.token);
         localStorage.removeItem("token");
       }
+      notifyAuthChange();
       window.location.href = "/dashboard";
     } catch (err: any) {
       setError(err.response?.data?.error ?? t("loginFailed"));

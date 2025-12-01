@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
@@ -20,9 +20,6 @@ import {
   Line, 
   BarChart, 
   Bar, 
-  PieChart, 
-  Pie, 
-  Cell,
   XAxis, 
   YAxis, 
   CartesianGrid, 
@@ -43,6 +40,7 @@ type DashboardData = {
       failedOrders: number | null;
       totalRevenue: number | null;
       totalProfit: number | null;
+      totalShippingCost?: number | null;
     };
     _avg: {
       errorRate: number | null;
@@ -56,15 +54,15 @@ type DashboardData = {
       totalProfit: number | null;
     };
   };
-  alerts: {
-    lowStock: number;
-    errors: number;
-    returns: number;
+  alerts?: {
+    lowStock?: number;
+    errors?: number;
+    returns?: number;
   };
 };
 
 type ProfitTrend = {
-  date: Date;
+  date: string | Date;
   totalRevenue: number;
   totalProfit: number;
   avgProfit: number | null;
@@ -72,10 +70,67 @@ type ProfitTrend = {
   successfulOrders: number;
 };
 
+const FALLBACK_DASHBOARD: DashboardData = {
+  week: {
+    _sum: {
+      totalOrders: 72,
+      successfulOrders: 65,
+      failedOrders: 7,
+      totalRevenue: 985000,
+      totalProfit: 286000,
+      totalShippingCost: 82000
+    },
+    _avg: {
+      errorRate: 0.07,
+      conversionRate: 0.92
+    }
+  },
+  month: {
+    _sum: {
+      totalOrders: 288,
+      totalRevenue: 4125000,
+      totalProfit: 1214000
+    }
+  },
+  alerts: {
+    lowStock: 3,
+    errors: 4,
+    returns: 2
+  }
+};
+
+const buildFallbackTrends = (days: number): ProfitTrend[] => {
+  return Array.from({ length: days }, (_, idx) => {
+    const date = new Date();
+    date.setDate(date.getDate() - (days - idx - 1));
+    const baseRevenue = 40000 + idx * 1200;
+    const variance = Math.sin(idx / 3) * 6000;
+    const totalRevenue = baseRevenue + variance;
+    const totalProfit = totalRevenue * 0.28;
+    const orders = 24 + (idx % 5) * 3;
+    const successfulOrders = Math.max(orders - 2, 1);
+    return {
+      date: date.toISOString(),
+      totalRevenue,
+      totalProfit,
+      avgProfit: totalProfit / orders,
+      totalOrders: orders,
+      successfulOrders
+    };
+  });
+};
+
+const PERIOD_DAY_MAP: Record<'7' | '30' | '90', number> = {
+  '7': 7,
+  '30': 30,
+  '90': 90
+};
+
 export default function Analytics() {
   const { t } = useTranslation("common");
   const [selectedPeriod, setSelectedPeriod] = useState<'7' | '30' | '90'>('30');
   const [showTour, setShowTour] = useState(false);
+  const [useFallbackData, setUseFallbackData] = useState(false);
   
   const { data: dashboard, error: dashError } = useSWR<DashboardData>("/api/analytics/dashboard", fetcher);
   const { data: profitTrends, error: trendError } = useSWR<ProfitTrend[]>(
@@ -83,18 +138,39 @@ export default function Analytics() {
     fetcher
   );
 
-  const isLoading = !dashboard && !dashError;
+  useEffect(() => {
+    if (dashError || trendError) {
+      setUseFallbackData(true);
+    }
+  }, [dashError, trendError]);
+
+  useEffect(() => {
+    if (!dashError && dashboard && !trendError && profitTrends) {
+      setUseFallbackData(false);
+    }
+  }, [dashboard, dashError, profitTrends, trendError]);
+
+  const fallbackTrends = useMemo(
+    () => buildFallbackTrends(PERIOD_DAY_MAP[selectedPeriod]),
+    [selectedPeriod]
+  );
+  const effectiveDashboard = useFallbackData ? FALLBACK_DASHBOARD : dashboard;
+  const hasTrendData = Array.isArray(profitTrends) && profitTrends.length > 0;
+  const trendsArray = useFallbackData ? fallbackTrends : hasTrendData ? (profitTrends as ProfitTrend[]) : [];
+  const isLoading = !useFallbackData && !effectiveDashboard && !dashError;
 
   // Calculate metrics
-  const weekRevenue = dashboard?.week?._sum?.totalRevenue || 0;
-  const weekOrders = dashboard?.week?._sum?.totalOrders || 0;
-  const weekProfit = dashboard?.week?._sum?.totalProfit || 0;
-  const monthOrders = dashboard?.month?._sum?.totalOrders || 0;
-  const monthRevenue = dashboard?.month?._sum?.totalRevenue || 0;
-  const monthProfit = dashboard?.month?._sum?.totalProfit || 0;
-  const weekConversionRate = dashboard?.week?._avg?.conversionRate || 0;
+  const weekRevenue = effectiveDashboard?.week?._sum?.totalRevenue || 0;
+  const weekOrders = effectiveDashboard?.week?._sum?.totalOrders || 0;
+  const weekProfit = effectiveDashboard?.week?._sum?.totalProfit || 0;
+  const monthOrders = effectiveDashboard?.month?._sum?.totalOrders || 0;
+  const monthRevenue = effectiveDashboard?.month?._sum?.totalRevenue || 0;
+  const monthProfit = effectiveDashboard?.month?._sum?.totalProfit || 0;
+  const weekConversionRate = effectiveDashboard?.week?._avg?.conversionRate || 0;
 
-  const trendsArray = Array.isArray(profitTrends) ? profitTrends : [];
+  const alertLowStock = effectiveDashboard?.alerts?.lowStock ?? 0;
+  const alertErrors = effectiveDashboard?.alerts?.errors ?? 0;
+  const alertReturns = effectiveDashboard?.alerts?.returns ?? 0;
 
   // Prepare chart data
   const chartData = trendsArray.map(trend => ({
@@ -104,8 +180,6 @@ export default function Analytics() {
     orders: trend.totalOrders,
     successRate: trend.totalOrders > 0 ? (trend.successfulOrders / trend.totalOrders) * 100 : 0
   }));
-
-  const COLORS = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444', '#8b5cf6'];
 
   return (
     <div className="shell">
@@ -147,18 +221,24 @@ export default function Analytics() {
         </div>
 
         {/* Alert Messages */}
-        {dashboard?.alerts && (dashboard.alerts.lowStock > 0 || dashboard.alerts.errors > 0) && (
+        {(alertLowStock > 0 || alertErrors > 0 || alertReturns > 0) && (
           <Alert variant="warning" title={t("attentionRequired")}>
-            {dashboard.alerts.lowStock > 0 && `${dashboard.alerts.lowStock} products low on stock. `}
-            {dashboard.alerts.errors > 0 && `${dashboard.alerts.errors} errors in the last 7 days. `}
-            {dashboard.alerts.returns > 0 && `${dashboard.alerts.returns} pending returns.`}
+            {alertLowStock > 0 && `${alertLowStock} products low on stock. `}
+            {alertErrors > 0 && `${alertErrors} errors in the last 7 days. `}
+            {alertReturns > 0 && `${alertReturns} pending returns.`}
+          </Alert>
+        )}
+
+        {useFallbackData && (
+          <Alert variant="info" title={t("analyticsSampleDataTitle")}> 
+            {t("analyticsSampleDataDesc")}
           </Alert>
         )}
 
         {isLoading ? (
           <LoadingSpinner size="lg" text={t("loadingAnalyticsData")} />
-        ) : dashError ? (
-          <Alert variant="error" title={t("failedToLoadData")}>
+        ) : !useFallbackData && (dashError || trendError) ? (
+          <Alert variant="error" title={t("failedToLoadData") }>
             {t("unableToFetchAnalytics")}
           </Alert>
         ) : (
@@ -399,9 +479,9 @@ export default function Analytics() {
                       <strong>Order Volume:</strong> {weekOrders} orders this week. 
                       {weekOrders > 50 ? ' High volume detected - ensure inventory levels are adequate.' : ' Consider promotional campaigns to boost orders.'}
                     </li>
-                    {dashboard?.alerts?.lowStock && dashboard.alerts.lowStock > 0 && (
+                    {alertLowStock > 0 && (
                       <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-warning)' }}>
-                        <strong>⚠️ Stock Alert:</strong> {dashboard.alerts.lowStock} products need restocking to avoid fulfillment delays.
+                        <strong>⚠️ Stock Alert:</strong> {alertLowStock} products need restocking to avoid fulfillment delays.
                       </li>
                     )}
                   </ul>

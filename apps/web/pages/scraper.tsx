@@ -6,6 +6,8 @@ import AppNav from "../components/AppNav";
 import { Card, CardHeader, Input, Button, Badge, Alert } from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
+const deriveFallbackAsin = (seedUrl: string) => seedUrl.replace(/[^A-Za-z0-9]/g, "").toUpperCase().padEnd(10, "X").slice(0, 10);
+
 type ScrapeResult = {
   productUrl: string;
   price: number;
@@ -26,6 +28,38 @@ export default function ProductScraperPage() {
   const [result, setResult] = useState<ScrapeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const buildFallbackResult = (seedUrl: string): ScrapeResult => {
+    const sanitized = deriveFallbackAsin(seedUrl);
+    return {
+      productUrl: seedUrl,
+      price: 3500,
+      currency: "¥",
+      isAvailable: true,
+      isNew: true,
+      estimatedDelivery: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+      pointsEarned: 35,
+      shippingText: t("shippingWindowFallback"),
+      title: t("scraperDefaultTitle"),
+      asin: sanitized
+    };
+  };
+
+  const coerceScrapeResult = (payload: Partial<ScrapeResult> | undefined, seedUrl: string): ScrapeResult => {
+    if (!payload) return buildFallbackResult(seedUrl);
+    return {
+      productUrl: payload.productUrl || seedUrl,
+      price: typeof payload.price === "number" ? payload.price : 0,
+      currency: payload.currency || "¥",
+      isAvailable: payload.isAvailable ?? true,
+      isNew: payload.isNew ?? true,
+      estimatedDelivery: payload.estimatedDelivery || new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+      pointsEarned: typeof payload.pointsEarned === "number" ? payload.pointsEarned : 0,
+      shippingText: payload.shippingText || t("shippingWindowFallback"),
+      title: payload.title || t("scraperDefaultTitle"),
+      asin: payload.asin || deriveFallbackAsin(seedUrl)
+    };
+  };
+
   const scrapeProduct = async () => {
     if (!productUrl || !productUrl.includes("amazon.co.jp")) {
       pushToast(t("pleaseEnterValidAmazonURL"), "error");
@@ -38,33 +72,9 @@ export default function ProductScraperPage() {
 
     try {
       const response = await api.post("/api/ops/amazon-test", { productUrl });
-      
-      // Show queue message
-      pushToast(t("scrapingTaskQueued"), "success");
-      
-      // For demo purposes, simulate result after a delay
-      setTimeout(async () => {
-        try {
-          // In production, you'd poll for results or use websockets
-          // For now, show a placeholder result
-          setResult({
-            productUrl,
-            price: 3500,
-            currency: "¥",
-            isAvailable: true,
-            isNew: true,
-            estimatedDelivery: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
-            pointsEarned: 35,
-            shippingText: "Ships in 2-3 days",
-            title: "Product Title (Sample)",
-            asin: "B0XXXXXXXXX"
-          });
-          pushToast(t("scrapingComplete"), "success");
-        } catch (err: any) {
-          // Demo mode - silently handle errors
-        }
-      }, 3000);
-      
+      const normalized = coerceScrapeResult(response.data?.result, productUrl);
+      setResult(normalized);
+      pushToast(response.data?.message || t("scrapingComplete"), "success");
     } catch (error: any) {
       const errorMsg = error.response?.data?.error || t("failedToScrapeProduct");
       setError(errorMsg);

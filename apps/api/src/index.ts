@@ -131,6 +131,50 @@ async function ensureSuperAdmin() {
 }
 ensureSuperAdmin().catch((err) => console.error("Superadmin bootstrap failed", err));
 
+type ScrapePreview = {
+  productUrl: string;
+  asin: string;
+  title: string;
+  price: number;
+  currency: string;
+  isAvailable: boolean;
+  isNew: boolean;
+  estimatedDelivery: string;
+  pointsEarned: number;
+  shippingText: string;
+};
+
+function extractAsin(productUrl: string): string | null {
+  const match = productUrl.match(/(?:dp|gp\/[A-Za-z0-9_-]+\/product)\/([A-Z0-9]{10})/i);
+  if (match?.[1]) return match[1].toUpperCase();
+  const alt = productUrl.match(/([A-Z0-9]{10})(?:[/?]|$)/i);
+  return alt?.[1]?.toUpperCase() ?? null;
+}
+
+function buildSimulatedScrape(productUrl: string): ScrapePreview {
+  const asin = extractAsin(productUrl) ?? crypto.createHash("md5").update(productUrl).digest("hex").slice(0, 10).toUpperCase();
+  const hash = crypto.createHash("md5").update(productUrl).digest("hex");
+  const base = 3200 + (parseInt(hash.slice(0, 6), 16) % 7000);
+  const price = Math.round(base / 50) * 50;
+  const pointsEarned = Math.max(10, Math.round(price * 0.01));
+  const shippingWindow = (parseInt(hash.slice(6, 8), 16) % 3) + 2;
+  const eta = new Date(Date.now() + shippingWindow * 24 * 60 * 60 * 1000).toISOString();
+  const available = (parseInt(hash.slice(8, 10), 16) % 10) !== 0;
+  const isNew = (parseInt(hash.slice(10, 12), 16) % 5) !== 0;
+  return {
+    productUrl,
+    asin,
+    title: `Amazon Listing ${asin}`,
+    price,
+    currency: "¥",
+    isAvailable: available,
+    isNew,
+    estimatedDelivery: eta,
+    pointsEarned,
+    shippingText: available ? `Ships in ${shippingWindow}-${shippingWindow + 1} days` : "Currently unavailable"
+  };
+}
+
 // Root route for testing
 app.get("/", (_req, res) => res.json({ 
   status: "ok", 
@@ -709,13 +753,27 @@ app.get("/ops/queue", authMiddleware, requireRole([UserRole.ADMIN]), asyncHandle
   res.json({ waiting: counts[0], active: counts[1], failed: counts[2], delayed: counts[3] });
 }));
 
-// Test scrape enqueue (dry-run)
+// Test scrape endpoint (simulated preview)
 app.post("/ops/amazon-test", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const schema = z.object({ productUrl: z.string().url() });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
-  await orderQueue.add("test-scrape", { userId: req.userId, productUrl: parsed.data.productUrl });
-  res.json({ ok: true });
+
+  const preview = buildSimulatedScrape(parsed.data.productUrl);
+  let jobQueued = false;
+  try {
+    await orderQueue.add("test-scrape", { userId: req.userId, productUrl: parsed.data.productUrl }, { removeOnComplete: true, removeOnFail: false });
+    jobQueued = true;
+  } catch (err) {
+    console.warn("Unable to enqueue test scrape", err);
+  }
+
+  res.json({
+    status: "simulated",
+    jobQueued,
+    message: jobQueued ? "Preview generated and job queued" : "Preview generated (queue unavailable)",
+    result: preview
+  });
 }));
 
 // Connector/status summary
