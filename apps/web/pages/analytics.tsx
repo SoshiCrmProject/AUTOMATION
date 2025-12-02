@@ -266,24 +266,31 @@ export default function Analytics() {
     </div>
   );
 
+  type BadgeVariant = "success" | "error" | "warning" | "info" | "default";
+  const liveAlerts: Array<{ label: string; value: number; variant: BadgeVariant }> = [
+    {
+      label: t("lowStock") || "Low stock",
+      value: alertLowStock,
+      variant: alertLowStock > 0 ? "warning" : "default"
+    },
+    {
+      label: t("navErrors") || "Errors",
+      value: alertErrors,
+      variant: alertErrors > 0 ? "error" : "default"
+    },
+    {
+      label: t("returns") || "Returns",
+      value: alertReturns,
+      variant: alertReturns > 0 ? "info" : "default"
+    }
+  ];
+
   const sidebar = (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card hover={false}>
         <CardHeader title={t("liveAlerts") || "Live alerts"} subtitle={t("alertSummary") || "Operational signals"} icon="🚨" />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          {[{
-            label: t("lowStock") || "Low stock",
-            value: alertLowStock,
-            variant: alertLowStock > 0 ? "warning" : "default"
-          }, {
-            label: t("navErrors") || "Errors",
-            value: alertErrors,
-            variant: alertErrors > 0 ? "error" : "default"
-          }, {
-            label: t("returns") || "Returns",
-            value: alertReturns,
-            variant: alertReturns > 0 ? "info" : "default"
-          }].map((alert) => (
+          {liveAlerts.map((alert) => (
             <div key={alert.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 14, color: "var(--color-text)" }}>{alert.label}</span>
               <Badge variant={alert.variant}>{alert.value}</Badge>
