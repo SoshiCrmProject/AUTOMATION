@@ -200,13 +200,13 @@ export default function Inventory() {
 
   const handleRefresh = () => {
     if (!shopId) {
-      pushToast(t("enterShopIDToManageInventory") || "Enter a shop ID first", "warning");
+      pushToast(t("enterShopIDToManageInventory") || "Enter a shop ID first", "error");
       return;
     }
 
     refreshInventory();
     refreshAlerts();
-    pushToast(t("refreshingInventory") || "Refreshing inventory", "info");
+    pushToast(t("refreshingInventory") || "Refreshing inventory", "success");
   };
 
   const handleReplayTour = () => {
