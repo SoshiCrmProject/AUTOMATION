@@ -3,23 +3,24 @@ import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
-import AppNav from "../components/AppNav";
+import PageLayout from "../components/PageLayout";
 import Toast, { pushToast } from "../components/Toast";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { inventoryTour } from "../components/tourConfigs";
-import { 
-  Card, 
-  CardHeader, 
-  StatCard, 
-  Button, 
-  Alert, 
+import {
+  Card,
+  CardHeader,
+  StatCard,
+  Button,
+  Alert,
   LoadingSpinner,
   Tabs,
   Table,
   Badge,
   Modal,
   Input,
-  Select
+  Select,
+  EmptyState,
 } from "../components/ui/index";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
@@ -80,8 +81,7 @@ export default function Inventory() {
   const [adjustType, setAdjustType] = useState<"IN" | "OUT" | "ADJUSTMENT">("IN");
   const [adjustReason, setAdjustReason] = useState("");
   const [loading, setLoading] = useState(false);
-  
-  // New product form state
+
   const [newProduct, setNewProduct] = useState({
     shopeeItemId: "",
     sku: "",
@@ -91,80 +91,74 @@ export default function Inventory() {
     sellingPrice: 0,
     lowStockThreshold: 10,
     supplier: "",
-    location: ""
+    location: "",
   });
 
-  // Fetch inventory data
   const { data: inventoryData, error: invError, mutate: refreshInventory } = useSWR<InventoryResponse>(
     shopId ? `/api/inventory/${shopId}` : null,
     fetcher
   );
-  
+
   const { data: lowStockAlerts, mutate: refreshAlerts } = useSWR<LowStockAlert[]>(
     shopId ? `/api/inventory/alerts/low-stock?shopId=${shopId}` : null,
     fetcher
   );
 
-  const isLoading = !inventoryData && !invError && shopId;
-  
-  // Ensure arrays
+  const isLoading = Boolean(shopId && !inventoryData && !invError);
   const inventory = Array.isArray(inventoryData?.inventory) ? inventoryData.inventory : [];
   const alerts = Array.isArray(lowStockAlerts) ? lowStockAlerts : [];
 
-  // Filter inventory
-  const filteredInventory = inventory.filter(item => {
+  const filteredInventory = inventory.filter((item) => {
     const matchesStatus = filterStatus === "all" || item.status === filterStatus;
-    const matchesSearch = !searchTerm || 
+    const matchesSearch =
+      !searchTerm ||
       item.productName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       item.sku.toLowerCase().includes(searchTerm.toLowerCase());
     return matchesStatus && matchesSearch;
   });
 
-  // Stats
   const totalStock = inventoryData?.stats?._sum?.currentStock || 0;
   const totalAvailable = inventoryData?.stats?._sum?.availableStock || 0;
   const totalReserved = inventoryData?.stats?._sum?.reservedStock || 0;
   const totalProducts = inventoryData?.stats?._count || 0;
-  const lowStockCount = inventory.filter(i => i.status === "LOW_STOCK").length;
-  const outOfStockCount = inventory.filter(i => i.status === "OUT_OF_STOCK").length;
+  const lowStockCount = inventory.filter((i) => i.status === "LOW_STOCK").length;
+  const outOfStockCount = inventory.filter((i) => i.status === "OUT_OF_STOCK").length;
 
-  // Handle stock adjustment
   const handleStockAdjust = async () => {
     if (!selectedProduct || adjustQuantity === 0) return;
-    
+
     setLoading(true);
     try {
       await api.post(`/api/inventory/${selectedProduct.id}/adjust`, {
         quantity: Math.abs(adjustQuantity),
         type: adjustType,
-        reason: adjustReason || undefined
+        reason: adjustReason || undefined,
       });
-      pushToast('Stock adjusted successfully', 'success');
+      pushToast(t("stockAdjusted") || "Stock adjusted successfully", "success");
       refreshInventory();
       setShowAdjustModal(false);
       setAdjustQuantity(0);
       setAdjustReason("");
       setSelectedProduct(null);
     } catch (err: any) {
-      pushToast(err.response?.data?.error || 'Failed to adjust stock', 'error');
+      pushToast(err.response?.data?.error || t("failedToAdjustStock") || "Failed to adjust stock", "error");
     }
     setLoading(false);
   };
 
-  // Handle add new product
   const handleAddProduct = async () => {
     if (!shopId || !newProduct.shopeeItemId || !newProduct.productName) {
-      pushToast('Please fill in required fields', 'error');
+      pushToast(t("fillRequiredFields") || "Please fill in required fields", "error");
       return;
     }
 
     setLoading(true);
     try {
-      await api.post('/api/inventory', {
+      await api.post("/api/inventory", {
         shopId,
-        ...newProduct
+        ...newProduct,
       });
-      pushToast('Product added successfully', 'success');
+      pushToast(t("productAdded") || "Product added successfully", "success");
       refreshInventory();
       setShowAddModal(false);
       setNewProduct({
@@ -176,109 +170,236 @@ export default function Inventory() {
         sellingPrice: 0,
         lowStockThreshold: 10,
         supplier: "",
-        location: ""
+        location: "",
       });
     } catch (err: any) {
-      pushToast(err.response?.data?.error || 'Failed to add product', 'error');
+      pushToast(err.response?.data?.error || t("failedToAddProduct") || "Failed to add product", "error");
     }
     setLoading(false);
   };
 
-  // Handle acknowledge alert
   const handleAcknowledgeAlert = async (alertId: string) => {
     try {
       await api.post(`/api/inventory/alerts/${alertId}/acknowledge`);
-      pushToast('Alert acknowledged', 'success');
+      pushToast(t("alertAcknowledged") || "Alert acknowledged", "success");
       refreshAlerts();
     } catch (err: any) {
-      pushToast('Failed to acknowledge alert', 'error');
+      pushToast(err.response?.data?.error || t("failedToAcknowledge") || "Failed to acknowledge alert", "error");
     }
   };
 
-  // Handle resolve alert
   const handleResolveAlert = async (alertId: string) => {
     try {
       await api.post(`/api/inventory/alerts/${alertId}/resolve`);
-      pushToast('Alert resolved', 'success');
+      pushToast(t("alertResolved") || "Alert resolved", "success");
       refreshAlerts();
     } catch (err: any) {
-      pushToast('Failed to resolve alert', 'error');
+      pushToast(err.response?.data?.error || t("failedToResolve") || "Failed to resolve alert", "error");
     }
   };
 
-  return (
-    <div className="shell">
-      <AppNav activeHref="/inventory" />
-      <Toast />
+  const handleRefresh = () => {
+    if (!shopId) {
+      pushToast(t("enterShopIDToManageInventory") || "Enter a shop ID first", "warning");
+      return;
+    }
 
-        <OnboardingTour 
-          pageName="inventory" 
-          steps={inventoryTour} 
-          onComplete={() => setShowTour(false)} 
-        />
-        {!showTour && <HelpButton onClick={() => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem("tour_completed_inventory");
-            setShowTour(true);
-            window.location.reload();
+    refreshInventory();
+    refreshAlerts();
+    pushToast(t("refreshingInventory") || "Refreshing inventory", "info");
+  };
+
+  const handleReplayTour = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("tour_completed_inventory");
+    setShowTour(true);
+    window.location.reload();
+  };
+
+  const heroBadge = (
+    <Badge variant={alerts.length > 0 ? "warning" : "success"}>
+      {alerts.length > 0
+        ? `${alerts.length} ${t("activeAlerts") || "alerts"}`
+        : t("inventorySynced") || "Synced"}
+    </Badge>
+  );
+
+  const heroAside = (
+    <div
+      style={{
+        display: "grid",
+        gap: 12,
+        gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+      }}
+    >
+      {[{
+        label: t("totalProducts") || "Products",
+        value: shopId ? totalProducts : "--",
+        helper: t("inventoryTotalProductsHelper") || "Tracked listings",
+      }, {
+        label: t("totalStock") || "Total stock",
+        value: shopId ? totalStock : "--",
+        helper: t("inventoryTotalStockHelper") || "Units across warehouses",
+      }, {
+        label: t("lowStock") || "Low stock",
+        value: shopId ? lowStockCount : "--",
+        helper: t("inventoryLowStockHelper") || "Below thresholds",
+      }, {
+        label: t("outOfStock") || "Out of stock",
+        value: shopId ? outOfStockCount : "--",
+        helper: t("inventoryOutStockHelper") || "Need urgent reorder",
+      }].map((stat) => (
+        <div key={stat.label} style={{ padding: 16 }} className="stat-card">
+          <p style={{ fontSize: 12, textTransform: "uppercase", color: "var(--color-text-light)", marginBottom: 6 }}>{stat.label}</p>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{stat.value}</div>
+          <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: 13 }}>{stat.helper}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {shopId
+        ? t("inventoryHeroFooterSynced", { shopId }) || `Syncing Shopee stock for ${shopId}`
+        : t("inventoryHeroFooter") || "Connect your shop ID to sync Shopee stock every hour."}
+    </span>
+  );
+
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+      <Input
+        placeholder={t("shopID")}
+        value={shopId}
+        onChange={(e) => setShopId(e.target.value)}
+        aria-label={t("shopID")}
+        style={{ flex: "1 1 200px", minWidth: 200 }}
+      />
+      <Input
+        placeholder={t("searchProductOrSKU")}
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        aria-label={t("search") || "Search"}
+        disabled={!shopId}
+        style={{ flex: "1 1 200px", minWidth: 200 }}
+      />
+      <Select
+        value={filterStatus}
+        onChange={(e) => setFilterStatus(e.target.value)}
+        options={[
+          { value: "all", label: t("allStatus") || "All status" },
+          { value: "IN_STOCK", label: t("inStock") || "In stock" },
+          { value: "LOW_STOCK", label: t("lowStock") || "Low stock" },
+          { value: "OUT_OF_STOCK", label: t("outOfStock") || "Out of stock" },
+          { value: "DISCONTINUED", label: t("discontinued") || "Discontinued" },
+        ]}
+        disabled={!shopId}
+        style={{ flex: "0 0 200px", minWidth: 180 }}
+      />
+      <Button type="button" variant="ghost" onClick={() => {
+        setFilterStatus("all");
+        setSearchTerm("");
+      }}>🧼 {t("clearFilters") || "Clear"}</Button>
+      <Button type="button" variant="ghost" onClick={handleRefresh} disabled={!shopId}>🔄 {t("refreshData") || "Refresh"}</Button>
+    </div>
+  );
+
+  const actions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={() => setShowAddModal(true)} disabled={!shopId}>➕ {t("addProduct") || "Add product"}</Button>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => {
+          if (typeof window !== "undefined" && shopId) {
+            window.open(`/api/inventory/export?shopId=${shopId}`, "_blank");
           }
-        }} />}
-      <div className="container">
-        {/* Enhanced Hero Section */}
-        <div style={{ 
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)',
-          borderRadius: 'var(--radius-xl)',
-          padding: '40px',
-          marginBottom: '32px',
-          border: '1px solid var(--color-border)',
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '20px' }}>
-            <div>
-              <h1 style={{ fontSize: '42px', margin: '0 0 12px 0', fontWeight: 900, background: 'linear-gradient(135deg, #f59e0b, #3b82f6)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-                📦 {t("navInventory") || "Inventory Management"}
-              </h1>
-              <p style={{ color: "var(--color-text-muted)", margin: 0, fontSize: '16px' }}>
-                Track stock levels, manage products, and monitor alerts
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <Button onClick={() => setShowAddModal(true)} disabled={!shopId}>
-                ➕ Add Product
-              </Button>
-              <Button onClick={() => refreshInventory()} variant="ghost">
-                🔄 Refresh
-              </Button>
-            </div>
-          </div>
-        </div>
+        }}
+        disabled={!shopId}
+      >
+        ⬇️ {t("exportCsv") || "Export CSV"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleReplayTour}>🧭 {t("replayTour") || "Replay tour"}</Button>
+    </div>
+  );
 
-        {/* Shop Selection */}
-        {!shopId && (
-          <Alert variant="info" title={t("selectShop")}>
-            {t("enterShopIDToManageInventory")}
-          </Alert>
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader title={t("inventoryAlerts") || "Alerts"} subtitle={t("inventoryAlertsSubtitle") || "Low stock warnings"} icon="🚨" />
+        {alerts.length === 0 ? (
+          <p style={{ margin: 0, color: "var(--color-text-muted)" }}>{t("noAlerts") || "All clear."}</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: 12 }}>
+            {alerts.slice(0, 4).map((alert) => (
+              <li
+                key={alert.id}
+                style={{
+                  padding: 12,
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--color-border)",
+                  background: "var(--color-elevated)",
+                }}
+              >
+                <p style={{ margin: 0, fontWeight: 600 }}>{alert.productId}</p>
+                <p style={{ margin: "4px 0", fontSize: 13, color: "var(--color-text-muted)" }}>
+                  {t("inventoryAlertThreshold", { qty: alert.currentQty, threshold: alert.threshold }) || `Qty ${alert.currentQty}/${alert.threshold}`}
+                </p>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {!alert.acknowledged && (
+                    <Button size="sm" variant="ghost" onClick={() => handleAcknowledgeAlert(alert.id)}>
+                      {t("acknowledge") || "Acknowledge"}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="ghost" onClick={() => handleResolveAlert(alert.id)}>
+                    {t("resolve") || "Resolve"}
+                  </Button>
+                </div>
+              </li>
+            ))}
+          </ul>
         )}
-
-        <div style={{ marginBottom: '24px' }}>
-          <Input
-            label={t("shopID")}
-            value={shopId}
-            onChange={(e) => setShopId(e.target.value)}
-            placeholder={t("enterYourShopID")}
-            hint={t("shopIDHint")}
-          />
+      </Card>
+      <Card hover={false}>
+        <CardHeader title={t("inventoryQuickLinks") || "Quick links"} subtitle={t("inventoryQuickLinksSubtitle") || "Jump to workflows"} icon="⚙️" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/orders")}>🧾 {t("navOrders") || "Orders"}</Button>
+          <Button type="button" variant="ghost" onClick={() => (window.location.href = "/analytics")}>📈 {t("navAnalytics") || "Analytics"}</Button>
+          <Button type="button" variant="ghost" onClick={() => window.open("mailto:supply@automation", "_blank")}>✉️ {t("contactSupplier") || "Contact supplier"}</Button>
         </div>
+      </Card>
+    </div>
+  );
 
-        {/* Alert Messages */}
-        {alerts.length > 0 && (
-          <Alert variant="warning" title={`${alerts.length} ${t("lowStockAlerts")}`}>
-            {t("productsNeedAttention")}
-          </Alert>
-        )}
+  return (
+    <>
+      <PageLayout
+        activeHref="/inventory"
+        title={`📦 ${t("navInventory") || "Inventory Management"}`}
+        description={t("inventoryHeroDescription") || "Track stock levels, manage products, and monitor alerts."}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        toolbar={toolbar}
+        actions={actions}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, rgba(245, 158, 11, 0.08) 0%, rgba(59, 130, 246, 0.08) 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {!shopId && (
+            <Alert variant="info" title={t("selectShop") || "Select a shop"}>
+              {t("enterShopIDToManageInventory")}
+            </Alert>
+          )}
 
-        {shopId && (
-          <>
-            {isLoading ? (
+          {alerts.length > 0 && (
+            <Alert variant="warning" title={`${alerts.length} ${t("lowStockAlerts")}`}>
+              {t("productsNeedAttention")}
+            </Alert>
+          )}
+
+          {shopId && (
+            isLoading ? (
               <LoadingSpinner size="lg" text={t("loadingInventory")} />
             ) : invError ? (
               <Alert variant="error" title={t("failedToLoadInventory")}>
@@ -286,130 +407,120 @@ export default function Inventory() {
               </Alert>
             ) : (
               <>
-                {/* Stats Cards */}
-                <div className="grid grid-4" style={{ marginBottom: '32px' }}>
-                  <StatCard 
-                    label={t("totalProducts")}
-                    value={totalProducts}
-                    icon="📦"
-                    color="primary"
-                  />
-                  <StatCard 
-                    label={t("totalStock")}
-                    value={totalStock}
-                    icon="📊"
-                    color="info"
-                  />
-                  <StatCard 
-                    label={t("lowStock")}
-                    value={lowStockCount}
-                    icon="⚠️"
-                    color="warning"
-                  />
-                  <StatCard 
-                    label={t("outOfStock")}
-                    value={outOfStockCount}
-                    icon="🚫"
-                    color="error"
-                  />
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 16,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  }}
+                >
+                  <StatCard label={t("totalProducts")} value={totalProducts} icon="📦" color="primary" />
+                  <StatCard label={t("totalStock")} value={totalStock} icon="📊" color="info" />
+                  <StatCard label={t("lowStock")} value={lowStockCount} icon="⚠️" color="warning" />
+                  <StatCard label={t("outOfStock")} value={outOfStockCount} icon="🚫" color="error" />
                 </div>
 
-                {/* Filters */}
-                <div style={{ marginBottom: '24px' }}>
-                  <Card>
-                  <CardHeader title={t("filters")} icon="🔍" />
-                  <div className="grid grid-3" style={{ gap: '16px' }}>
-                    <Input
-                      label={t("search")}
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      placeholder={t("searchProductOrSKU")}
-                    />
-                    <Select
-                      label={t("status")}
-                      value={filterStatus}
-                      onChange={(e) => setFilterStatus(e.target.value)}
-                      options={[
-                        { value: "all", label: t("allStatus") },
-                        { value: "IN_STOCK", label: t("inStock") },
-                        { value: "LOW_STOCK", label: t("lowStock") },
-                        { value: "OUT_OF_STOCK", label: t("outOfStock") },
-                        { value: "DISCONTINUED", label: t("discontinued") },
-                      ]}
-                    />
-                    <div style={{ display: 'flex', alignItems: 'flex-end', gap: '8px' }}>
-                      <Button onClick={() => { setSearchTerm(""); setFilterStatus("all"); }} variant="ghost" fullWidth>
-                        {t("clearFilters")}
-                      </Button>
-                    </div>
+                <Card>
+                  <CardHeader title={t("inventoryCapacity") || "Capacity breakdown"} subtitle={t("inventoryCapacitySubtitle") || "Available vs reserved stock"} icon="🏗️" />
+                  <div
+                    style={{
+                      display: "grid",
+                      gap: 16,
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      padding: "16px 0",
+                    }}
+                  >
+                    {[{
+                      label: t("availableStock") || "Available",
+                      value: totalAvailable,
+                      color: "var(--color-success)",
+                    }, {
+                      label: t("reservedStock") || "Reserved",
+                      value: totalReserved,
+                      color: "var(--color-warning)",
+                    }, {
+                      label: t("products") || "Products",
+                      value: totalProducts,
+                      color: "var(--color-primary)",
+                    }].map((meta) => (
+                      <div key={meta.label} style={{ textAlign: "center" }}>
+                        <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>{meta.label}</p>
+                        <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: meta.color }}>{meta.value}</p>
+                      </div>
+                    ))}
                   </div>
                 </Card>
-                </div>
 
-                {/* Tabbed Content */}
-                <div style={{ marginBottom: '32px' }}>
-                  <Card>
+                <Card>
                   <Tabs
                     tabs={[
                       {
-                        id: 'products',
+                        id: "products",
                         label: t("products"),
-                        icon: '📦',
+                        icon: "📦",
                         badge: filteredInventory.length,
                         content: (
                           <div>
                             {filteredInventory.length > 0 ? (
                               <Table
                                 columns={[
-                                  { key: 'sku', header: t("sku"), width: '120px' },
-                                  { key: 'productName', header: t("productName") },
-                                  { 
-                                    key: 'status', 
+                                  { key: "sku", header: t("sku"), width: "120px" },
+                                  { key: "productName", header: t("productName") },
+                                  {
+                                    key: "status",
                                     header: t("status"),
-                                    width: '120px',
+                                    width: "120px",
                                     render: (row) => (
-                                      <Badge variant={
-                                        row.status === 'IN_STOCK' ? 'success' :
-                                        row.status === 'LOW_STOCK' ? 'warning' :
-                                        row.status === 'OUT_OF_STOCK' ? 'error' : 'info'
-                                      }>
-                                        {row.status.replace('_', ' ')}
+                                      <Badge
+                                        variant={
+                                          row.status === "IN_STOCK"
+                                            ? "success"
+                                            : row.status === "LOW_STOCK"
+                                              ? "warning"
+                                              : row.status === "OUT_OF_STOCK"
+                                                ? "error"
+                                                : "info"
+                                        }
+                                      >
+                                        {row.status.replace("_", " ")}
                                       </Badge>
-                                    )
-                                  },
-                                  { 
-                                    key: 'currentStock', 
-                                    header: t("stock"),
-                                    width: '100px',
-                                    render: (row) => (
-                                      <span style={{ 
-                                        fontWeight: 600,
-                                        color: row.currentStock <= row.lowStockThreshold ? 'var(--color-error)' : 'var(--color-text)'
-                                      }}>
-                                        {row.currentStock}
-                                      </span>
-                                    )
-                                  },
-                                  { 
-                                    key: 'available', 
-                                    header: t("available"),
-                                    width: '100px',
-                                    render: (row) => row.availableStock
-                                  },
-                                  { 
-                                    key: 'location', 
-                                    header: t("location"),
-                                    width: '120px',
-                                    render: (row) => row.location || '-'
+                                    ),
                                   },
                                   {
-                                    key: 'actions',
-                                    header: t("actions"),
-                                    width: '150px',
+                                    key: "currentStock",
+                                    header: t("stock"),
+                                    width: "100px",
                                     render: (row) => (
-                                      <div style={{ display: 'flex', gap: '8px' }}>
-                                        <Button 
-                                          size="sm" 
+                                      <span
+                                        style={{
+                                          fontWeight: 600,
+                                          color: row.currentStock <= row.lowStockThreshold ? "var(--color-error)" : "var(--color-text)",
+                                        }}
+                                      >
+                                        {row.currentStock}
+                                      </span>
+                                    ),
+                                  },
+                                  {
+                                    key: "available",
+                                    header: t("available"),
+                                    width: "100px",
+                                    render: (row) => row.availableStock,
+                                  },
+                                  {
+                                    key: "location",
+                                    header: t("location"),
+                                    width: "120px",
+                                    render: (row) => row.location || "-",
+                                  },
+                                  {
+                                    key: "actions",
+                                    header: t("actions"),
+                                    width: "150px",
+                                    render: (row) => (
+                                      <div style={{ display: "flex", gap: "8px" }}>
+                                        <Button
+                                          size="sm"
                                           variant="primary"
                                           onClick={() => {
                                             setSelectedProduct(row);
@@ -419,183 +530,156 @@ export default function Inventory() {
                                           {t("adjust")}
                                         </Button>
                                       </div>
-                                    )
-                                  }
+                                    ),
+                                  },
                                 ]}
                                 data={filteredInventory}
                                 emptyMessage={t("noProductsFound")}
                               />
                             ) : (
-                              <div style={{ padding: '60px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '64px', marginBottom: '16px' }}>📦</div>
-                                <h3 style={{ marginBottom: '8px' }}>{t("noProductsFound")}</h3>
-                                <p style={{ color: 'var(--color-text-muted)', marginBottom: '24px' }}>
-                                  {searchTerm || filterStatus !== 'all' 
+                              <EmptyState
+                                icon="📦"
+                                title={t("noProductsFound")}
+                                description={
+                                  searchTerm || filterStatus !== "all"
                                     ? t("tryAdjustingFilters")
-                                    : t("addFirstProductToStart")}
-                                </p>
-                                {!searchTerm && filterStatus === 'all' && (
-                                  <Button onClick={() => setShowAddModal(true)}>
-                                    ➕ {t("addProduct")}
-                                  </Button>
-                                )}
-                              </div>
+                                    : t("addFirstProductToStart")
+                                }
+                                action={
+                                  !searchTerm && filterStatus === "all" ? (
+                                    <Button onClick={() => setShowAddModal(true)}>
+                                      ➕ {t("addProduct")}
+                                    </Button>
+                                  ) : undefined
+                                }
+                              />
                             )}
                           </div>
                         ),
                       },
                       {
-                        id: 'alerts',
+                        id: "alerts",
                         label: t("alerts"),
-                        icon: '🔔',
-                        badge: alerts.filter(a => !a.acknowledged).length,
+                        icon: "🔔",
+                        badge: alerts.filter((a) => !a.acknowledged).length,
                         content: (
                           <div>
                             {alerts.length > 0 ? (
                               <Table
                                 columns={[
-                                  { 
-                                    key: 'productId', 
+                                  {
+                                    key: "productId",
                                     header: t("product"),
                                     render: (row) => {
-                                      const product = inventory.find(p => p.id === row.productId);
+                                      const product = inventory.find((p) => p.id === row.productId);
                                       return product?.productName || row.productId;
-                                    }
-                                  },
-                                  { 
-                                    key: 'currentQty', 
-                                    header: t("currentStock"),
-                                    width: '120px',
-                                    render: (row) => (
-                                      <Badge variant="error">{row.currentQty}</Badge>
-                                    )
-                                  },
-                                  { 
-                                    key: 'threshold', 
-                                    header: t("threshold"),
-                                    width: '100px'
-                                  },
-                                  { 
-                                    key: 'notifiedAt', 
-                                    header: t("date"),
-                                    width: '150px',
-                                    render: (row) => new Date(row.notifiedAt).toLocaleDateString()
-                                  },
-                                  { 
-                                    key: 'status', 
-                                    header: 'Status',
-                                    width: '120px',
-                                    render: (row) => (
-                                      <Badge variant={row.acknowledged ? 'info' : 'warning'}>
-                                        {row.acknowledged ? t("acknowledged") : t("new")}
-                                      </Badge>
-                                    )
+                                    },
                                   },
                                   {
-                                    key: 'actions',
-                                    header: 'Actions',
-                                    width: '180px',
+                                    key: "currentQty",
+                                    header: t("currentStock"),
+                                    width: "120px",
+                                    render: (row) => <Badge variant="error">{row.currentQty}</Badge>,
+                                  },
+                                  { key: "threshold", header: t("threshold"), width: "100px" },
+                                  {
+                                    key: "notifiedAt",
+                                    header: t("date"),
+                                    width: "150px",
+                                    render: (row) => new Date(row.notifiedAt).toLocaleDateString(),
+                                  },
+                                  {
+                                    key: "status",
+                                    header: t("status"),
+                                    width: "120px",
                                     render: (row) => (
-                                      <div style={{ display: 'flex', gap: '8px' }}>
+                                      <Badge variant={row.acknowledged ? "info" : "warning"}>
+                                        {row.acknowledged ? t("acknowledged") : t("new")}
+                                      </Badge>
+                                    ),
+                                  },
+                                  {
+                                    key: "actions",
+                                    header: t("actions"),
+                                    width: "180px",
+                                    render: (row) => (
+                                      <div style={{ display: "flex", gap: "8px" }}>
                                         {!row.acknowledged && (
-                                          <Button 
-                                            size="sm" 
-                                            variant="ghost"
-                                            onClick={() => handleAcknowledgeAlert(row.id)}
-                                          >
+                                          <Button size="sm" variant="ghost" onClick={() => handleAcknowledgeAlert(row.id)}>
                                             {t("acknowledge")}
                                           </Button>
                                         )}
                                         {!row.resolvedAt && (
-                                          <Button 
-                                            size="sm" 
-                                            variant="success"
-                                            onClick={() => handleResolveAlert(row.id)}
-                                          >
+                                          <Button size="sm" variant="success" onClick={() => handleResolveAlert(row.id)}>
                                             {t("resolve")}
                                           </Button>
                                         )}
                                       </div>
-                                    )
-                                  }
+                                    ),
+                                  },
                                 ]}
                                 data={alerts}
                                 emptyMessage={t("noAlerts")}
                               />
                             ) : (
-                              <div style={{ padding: '60px', textAlign: 'center' }}>
-                                <div style={{ fontSize: '64px', marginBottom: '16px' }}>✅</div>
-                                <h3 style={{ marginBottom: '8px' }}>{t("noAlerts")}</h3>
-                                <p style={{ color: 'var(--color-text-muted)' }}>
-                                  {t("allProductsWellStocked")}
-                                </p>
-                              </div>
+                              <EmptyState icon="✅" title={t("noAlerts")} description={t("allProductsWellStocked")} />
                             )}
                           </div>
                         ),
                       },
                       {
-                        id: 'stats',
+                        id: "stats",
                         label: t("statistics"),
-                        icon: '📊',
+                        icon: "📊",
                         content: (
-                          <div style={{ padding: '24px' }}>
-                            <h3 style={{ marginTop: 0, marginBottom: '24px' }}>{t("inventoryStatistics")}</h3>
-                            
-                            <div className="grid grid-2" style={{ marginBottom: '32px' }}>
+                          <div style={{ padding: "24px" }}>
+                            <h3 style={{ marginTop: 0, marginBottom: "24px" }}>{t("inventoryStatistics")}</h3>
+                            <div className="grid grid-2" style={{ marginBottom: "32px" }}>
                               <Card>
                                 <CardHeader title={t("stockOverview")} icon="📦" />
-                                <div style={{ padding: '16px' }}>
-                                  <div style={{ marginBottom: '16px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>Total Stock</span>
-                                      <strong>{totalStock}</strong>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>Available</span>
-                                      <strong style={{ color: 'var(--color-success)' }}>{totalAvailable}</strong>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <span>Reserved</span>
-                                      <strong style={{ color: 'var(--color-warning)' }}>{totalReserved}</strong>
-                                    </div>
+                                <div style={{ padding: "16px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                                    <span>Total Stock</span>
+                                    <strong>{totalStock}</strong>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                                    <span>Available</span>
+                                    <strong style={{ color: "var(--color-success)" }}>{totalAvailable}</strong>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                    <span>Reserved</span>
+                                    <strong style={{ color: "var(--color-warning)" }}>{totalReserved}</strong>
                                   </div>
                                 </div>
                               </Card>
-
                               <Card>
                                 <CardHeader title={t("productStatus")} icon="📋" />
-                                <div style={{ padding: '16px' }}>
-                                  <div style={{ marginBottom: '16px' }}>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>{t("inStock")}</span>
-                                      <Badge variant="success">
-                                        {inventory.filter(i => i.status === 'IN_STOCK').length}
-                                      </Badge>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                                      <span>{t("lowStock")}</span>
-                                      <Badge variant="warning">{lowStockCount}</Badge>
-                                    </div>
-                                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                                      <span>{t("outOfStock")}</span>
-                                      <Badge variant="error">{outOfStockCount}</Badge>
-                                    </div>
+                                <div style={{ padding: "16px" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                                    <span>{t("inStock")}</span>
+                                    <Badge variant="success">{inventory.filter((i) => i.status === "IN_STOCK").length}</Badge>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                                    <span>{t("lowStock")}</span>
+                                    <Badge variant="warning">{lowStockCount}</Badge>
+                                  </div>
+                                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                                    <span>{t("outOfStock")}</span>
+                                    <Badge variant="error">{outOfStockCount}</Badge>
                                   </div>
                                 </div>
                               </Card>
                             </div>
-
                             <Alert variant="info" title={t("inventoryHealth")}>
-                              {outOfStockCount === 0 && lowStockCount === 0 ? (
-                                t("inventoryInGoodShape")
-                              ) : (
-                                <>
-                                  {outOfStockCount > 0 && `${outOfStockCount} ${t("productsOutOfStock")} `}
-                                  {lowStockCount > 0 && `${lowStockCount} ${t("productsRunningLow")} `}
-                                  {t("considerRestocking")}
-                                </>
-                              )}
+                              {outOfStockCount === 0 && lowStockCount === 0
+                                ? t("inventoryInGoodShape")
+                                : (
+                                  <>
+                                    {outOfStockCount > 0 && `${outOfStockCount} ${t("productsOutOfStock")} `}
+                                    {lowStockCount > 0 && `${lowStockCount} ${t("productsRunningLow")} `}
+                                    {t("considerRestocking")}
+                                  </>
+                                )}
                             </Alert>
                           </div>
                         ),
@@ -603,14 +687,17 @@ export default function Inventory() {
                     ]}
                   />
                 </Card>
-                </div>
               </>
-            )}
-          </>
-        )}
-      </div>
+            )
+          )}
+        </div>
+      </PageLayout>
 
-      {/* Stock Adjustment Modal */}
+      <Toast />
+
+      <OnboardingTour pageName="inventory" steps={inventoryTour} onComplete={() => setShowTour(false)} />
+      {!showTour && <HelpButton onClick={handleReplayTour} />}
+
       {showAdjustModal && selectedProduct && (
         <Modal
           isOpen={showAdjustModal}
@@ -623,11 +710,9 @@ export default function Inventory() {
           title={t("adjustStock")}
           size="md"
         >
-          <div style={{ padding: '24px' }}>
-            <h4 style={{ marginTop: 0, marginBottom: '16px' }}>
-              {selectedProduct.productName}
-            </h4>
-            <p style={{ color: 'var(--color-text-muted)', marginBottom: '24px' }}>
+          <div style={{ padding: "24px" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "16px" }}>{selectedProduct.productName}</h4>
+            <p style={{ color: "var(--color-text-muted)", marginBottom: "24px" }}>
               {t("currentStock")}: <strong>{selectedProduct.currentStock}</strong>
             </p>
 
@@ -648,7 +733,7 @@ export default function Inventory() {
               value={adjustQuantity}
               onChange={(e) => setAdjustQuantity(Number(e.target.value))}
               placeholder={t("enterQuantity")}
-              hint={`${t("newStockWillBe")}: ${selectedProduct.currentStock + (adjustType === 'OUT' ? -adjustQuantity : adjustQuantity)}`}
+              hint={`${t("newStockWillBe")}: ${selectedProduct.currentStock + (adjustType === "OUT" ? -adjustQuantity : adjustQuantity)}`}
             />
 
             <Input
@@ -658,26 +743,25 @@ export default function Inventory() {
               placeholder={t("reasonPlaceholder")}
             />
 
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+            <div style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <Button onClick={handleStockAdjust} disabled={loading || adjustQuantity === 0} fullWidth>
                 {loading ? t("adjusting") : t("confirmAdjustment")}
               </Button>
-              <Button 
+              <Button
                 onClick={() => {
                   setShowAdjustModal(false);
                   setSelectedProduct(null);
-                }} 
+                }}
                 variant="ghost"
                 fullWidth
               >
-                Cancel
+                {t("cancel")}
               </Button>
             </div>
           </div>
         </Modal>
       )}
 
-      {/* Add Product Modal */}
       {showAddModal && (
         <Modal
           isOpen={showAddModal}
@@ -685,66 +769,66 @@ export default function Inventory() {
           title={t("addNewProduct")}
           size="lg"
         >
-          <div style={{ padding: '24px' }}>
-            <div className="grid grid-2" style={{ gap: '16px' }}>
+          <div style={{ padding: "24px" }}>
+            <div className="grid grid-2" style={{ gap: "16px" }}>
               <Input
                 label={`${t("shopeeItemID")} *`}
                 value={newProduct.shopeeItemId}
-                onChange={(e) => setNewProduct({...newProduct, shopeeItemId: e.target.value})}
+                onChange={(e) => setNewProduct({ ...newProduct, shopeeItemId: e.target.value })}
                 placeholder="e.g., 123456789"
               />
               <Input
                 label={`${t("sku")} *`}
                 value={newProduct.sku}
-                onChange={(e) => setNewProduct({...newProduct, sku: e.target.value})}
+                onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
                 placeholder="e.g., PROD-001"
               />
               <Input
                 label={`${t("productName")} *`}
                 value={newProduct.productName}
-                onChange={(e) => setNewProduct({...newProduct, productName: e.target.value})}
+                onChange={(e) => setNewProduct({ ...newProduct, productName: e.target.value })}
                 placeholder={t("productNamePlaceholder")}
-                style={{ gridColumn: '1 / -1' }}
+                style={{ gridColumn: "1 / -1" }}
               />
               <Input
                 label={t("initialStock")}
                 type="number"
                 value={newProduct.currentStock}
-                onChange={(e) => setNewProduct({...newProduct, currentStock: Number(e.target.value)})}
+                onChange={(e) => setNewProduct({ ...newProduct, currentStock: Number(e.target.value) })}
               />
               <Input
                 label={t("lowStockThreshold")}
                 type="number"
                 value={newProduct.lowStockThreshold}
-                onChange={(e) => setNewProduct({...newProduct, lowStockThreshold: Number(e.target.value)})}
+                onChange={(e) => setNewProduct({ ...newProduct, lowStockThreshold: Number(e.target.value) })}
               />
               <Input
                 label={t("costPrice")}
                 type="number"
                 value={newProduct.costPrice}
-                onChange={(e) => setNewProduct({...newProduct, costPrice: Number(e.target.value)})}
+                onChange={(e) => setNewProduct({ ...newProduct, costPrice: Number(e.target.value) })}
               />
               <Input
                 label={t("sellingPrice")}
                 type="number"
                 value={newProduct.sellingPrice}
-                onChange={(e) => setNewProduct({...newProduct, sellingPrice: Number(e.target.value)})}
+                onChange={(e) => setNewProduct({ ...newProduct, sellingPrice: Number(e.target.value) })}
               />
               <Input
                 label={t("supplier")}
                 value={newProduct.supplier}
-                onChange={(e) => setNewProduct({...newProduct, supplier: e.target.value})}
+                onChange={(e) => setNewProduct({ ...newProduct, supplier: e.target.value })}
                 placeholder={t("supplierName")}
               />
               <Input
                 label={t("location")}
                 value={newProduct.location}
-                onChange={(e) => setNewProduct({...newProduct, location: e.target.value})}
+                onChange={(e) => setNewProduct({ ...newProduct, location: e.target.value })}
                 placeholder={t("locationPlaceholder")}
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '12px', marginTop: '24px' }}>
+            <div style={{ display: "flex", gap: "12px", marginTop: "24px" }}>
               <Button onClick={handleAddProduct} disabled={loading} fullWidth>
                 {loading ? t("adding") : t("addProduct")}
               </Button>
@@ -755,7 +839,7 @@ export default function Inventory() {
           </div>
         </Modal>
       )}
-    </div>
+    </>
   );
 }
 

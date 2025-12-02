@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
-import AppNav from "../components/AppNav";
+import PageLayout from "../components/PageLayout";
 import api from "../lib/apiClient";
 import Toast, { pushToast } from "../components/Toast";
-import { Card, CardHeader, Button, Input, Textarea, Select, EmptyState, LoadingSpinner } from "../components/ui/index";
+import {
+  Card,
+  CardHeader,
+  Button,
+  Input,
+  Textarea,
+  Select,
+  EmptyState,
+  LoadingSpinner,
+  StatCard,
+  Badge
+} from "../components/ui/index";
 
 type Mapping = {
   id: string;
@@ -27,6 +38,7 @@ export default function MappingsPage() {
   const [amazonProductUrl, setAmazonProductUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [filter, setFilter] = useState("");
+  const [shopFilter, setShopFilter] = useState("all");
   const [csvText, setCsvText] = useState("");
   const [loading, setLoading] = useState(false);
   const [savingMapping, setSavingMapping] = useState(false);
@@ -108,157 +120,333 @@ export default function MappingsPage() {
       mappings.filter((m) => {
         const shopName = shops.find((s) => s.id === m.shopId)?.name || "";
         const term = filter.toLowerCase();
-        return (
+        const matchesText =
           m.shopeeItemId.toLowerCase().includes(term) ||
           m.amazonProductUrl.toLowerCase().includes(term) ||
-          shopName.toLowerCase().includes(term)
-        );
+          shopName.toLowerCase().includes(term);
+        const matchesShop = shopFilter === "all" || m.shopId === shopFilter;
+        return matchesText && matchesShop;
       }),
-    [filter, mappings, shops]
+    [filter, mappings, shops, shopFilter]
+  );
+
+  const heroStats = useMemo(() => {
+    const total = mappings.length;
+    const active = mappings.filter((m) => m.isActive).length;
+    const uniqueShops = new Set(mappings.map((m) => m.shopId)).size;
+    const lastCreatedTs = mappings.reduce((latest, mapping) => {
+      if (!mapping.createdAt) return latest;
+      const ts = new Date(mapping.createdAt).getTime();
+      return ts > latest ? ts : latest;
+    }, 0);
+
+    return {
+      total,
+      active,
+      inactive: Math.max(total - active, 0),
+      uniqueShops,
+      lastCreated: lastCreatedTs ? new Date(lastCreatedTs).toISOString() : null
+    };
+  }, [mappings]);
+
+  const heroHighlights = useMemo(
+    () => [
+      {
+        label: t("totalMappingsLabel") || "Total mappings",
+        value: heroStats.total.toLocaleString(),
+        helper: t("mappingsTotalHelper") || "Records synced across all shops"
+      },
+      {
+        label: t("activeMappingsLabel") || "Active",
+        value: heroStats.active.toLocaleString(),
+        helper: t("mappingsActiveHelper") || "Eligible for automation"
+      },
+      {
+        label: t("shopCoverageLabel") || "Shop coverage",
+        value: shops.length ? `${heroStats.uniqueShops}/${shops.length}` : heroStats.uniqueShops.toString(),
+        helper: t("mappingsCoverageHelper") || "Shops with at least one mapping"
+      }
+    ],
+    [heroStats.active, heroStats.total, heroStats.uniqueShops, shops.length, t]
+  );
+
+  const heroBadge = (
+    <Badge variant={heroStats.total > 0 ? "success" : "warning"} size="lg">
+      {heroStats.total > 0
+        ? `${heroStats.active}/${heroStats.total} ${t("mappingsActiveShort") || "active"}`
+        : t("mappingsAwaitingSetup") || "Awaiting setup"}
+    </Badge>
+  );
+
+  const heroAside = (
+    <div style={{ display: "grid", gap: 12 }}>
+      {heroHighlights.map((stat) => (
+        <div
+          key={stat.label}
+          style={{
+            padding: 16,
+            borderRadius: "var(--radius-lg)",
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(148,163,184,0.35)",
+            boxShadow: "var(--shadow-xs)"
+          }}
+        >
+          <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)", textTransform: "uppercase", letterSpacing: 0.5 }}>{stat.label}</p>
+          <strong style={{ display: "block", fontSize: 28, marginTop: 4 }}>{stat.value}</strong>
+          <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{stat.helper}</span>
+        </div>
+      ))}
+    </div>
+  );
+
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 13 }}>
+      {heroStats.lastCreated
+        ? `${t("lastMappingAdded") || "Last mapping added"}: ${new Date(heroStats.lastCreated).toLocaleString()}`
+        : t("mappingsHeroFooter") || "Create a mapping to start syncing Shopee items."}
+    </span>
+  );
+
+  const handleApplyTemplate = () => {
+    const template = [
+      "shop-123,123456789,https://www.amazon.co.jp/dp/B0ABC12345,First SKU",
+      "shop-456,987654321,https://www.amazon.co.jp/dp/B0XYZ67890,Backup SKU"
+    ].join("\n");
+    setCsvText(template);
+    pushToast(t("csvTemplateApplied") || "Sample CSV template applied", "success");
+  };
+
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+      <div style={{ flex: "1 1 240px", minWidth: 220 }}>
+        <Input
+          label={t("searchMappings") || "Search mappings"}
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder={t("search") || "Search"}
+        />
+      </div>
+      <div style={{ flex: "1 1 200px", minWidth: 200 }}>
+        <Select
+          label={t("shopSelection") || "Shop"}
+          value={shopFilter}
+          onChange={(e) => setShopFilter(e.target.value)}
+          options={[{ value: "all", label: t("allShops") || "All shops" }, ...shops.map((s) => ({ value: s.id, label: s.name }))]}
+        />
+      </div>
+      <Button variant="ghost" onClick={() => { setFilter(""); setShopFilter("all"); }}>
+        {t("clearFilters") || "Clear filters"}
+      </Button>
+    </div>
+  );
+
+  const actions = (
+    <Button variant="ghost" onClick={load} loading={loading}>
+      {t("refreshData") || "Refresh data"}
+    </Button>
+  );
+
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader
+          title={t("bulkImportTips") || "Bulk import tips"}
+          subtitle={t("bulkImportHint") || "Paste CSV rows with shop, Shopee ID, and Amazon URL"}
+          icon="💡"
+        />
+        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8, color: "var(--color-text-muted)", fontSize: 13 }}>
+          {[t("csvTipHeaders") || "Skip headers and keep columns comma-separated.", t("csvTipValidation") || "Only valid rows will be imported.", t("csvTipNotes") || "Trailing text fills the optional notes field."].map((tip) => (
+            <li key={tip}>{tip}</li>
+          ))}
+        </ul>
+        <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <Button size="sm" onClick={handleApplyTemplate}>
+            {t("applyTemplate") || "Apply template"}
+          </Button>
+          <Button size="sm" variant="ghost" onClick={() => setCsvText("")}>
+            {t("clearForm") || "Clear"}
+          </Button>
+        </div>
+      </Card>
+      <Card hover={false}>
+        <CardHeader
+          title={t("mappingStatus") || "Mapping status"}
+          subtitle={t("mappingStatusSubtitle") || "Snapshot across your catalog"}
+          icon="📊"
+        />
+        <div style={{ display: "grid", gap: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span>{t("activeMappingsLabel") || "Active"}</span>
+            <strong>{heroStats.active.toLocaleString()}</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span>{t("inactiveMappings") || "Inactive"}</span>
+            <strong>{heroStats.inactive.toLocaleString()}</strong>
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13 }}>
+            <span>{t("shopCoverageLabel") || "Shop coverage"}</span>
+            <strong>{shops.length ? `${heroStats.uniqueShops}/${shops.length}` : heroStats.uniqueShops.toString()}</strong>
+          </div>
+        </div>
+      </Card>
+    </div>
   );
 
   return (
-    <div className="shell">
-      <AppNav activeHref="/mappings" />
-      <Toast />
-      <div className="container">
-        <div
-          className="page-section"
-          style={{
-            background: "linear-gradient(135deg, rgba(14,165,233,0.12) 0%, rgba(59,130,246,0.12) 100%)",
-            borderRadius: "var(--radius-xl)",
-            padding: "36px",
-            border: "1px solid var(--color-border)"
-          }}
-        >
-          <h1 style={{ margin: 0, fontSize: 38, fontWeight: 800 }}>🔗 {t("mappingsTitle")}</h1>
-          <p style={{ color: "var(--color-text-muted)", maxWidth: 720, marginTop: 12 }}>{t("mappingsDescFull")}</p>
-        </div>
-
-        <div className="grid grid-2" style={{ gap: 24, marginTop: 32 }}>
+    <>
+      <PageLayout
+        activeHref="/mappings"
+        title={`🔗 ${t("mappingsTitle")}`}
+        description={t("mappingsDescFull")}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        toolbar={toolbar}
+        actions={actions}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, rgba(191,219,254,0.6) 0%, rgba(224,242,254,0.8) 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           <Card>
             <CardHeader
-              title={t("mappingFormTitle")}
-              subtitle={t("mappingFormSubtitle")}
-              icon="🛠️"
+              title={t("mappingPulse") || "Catalog pulse"}
+              subtitle={t("mappingPulseSubtitle") || "Live view of mapping readiness"}
+              icon="📈"
             />
-            <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-              <Select
-                label={t("shopSelection")}
-                value={shopId}
-                onChange={(e) => setShopId(e.target.value)}
-                options={[{ value: "", label: t("selectPlaceholder") }, ...shops.map((s) => ({ value: s.id, label: s.name }))]}
+            <div className="grid grid-3" style={{ gap: 16 }}>
+              <StatCard icon="🔗" label={t("totalMappingsLabel") || "Total mappings"} value={heroStats.total.toLocaleString()} color="primary" />
+              <StatCard icon="⚡" label={t("activeMappingsLabel") || "Active"} value={heroStats.active.toLocaleString()} color="success" />
+              <StatCard
+                icon="🏬"
+                label={t("shopCoverageLabel") || "Shop coverage"}
+                value={shops.length ? `${heroStats.uniqueShops}/${shops.length}` : heroStats.uniqueShops.toString()}
+                color="info"
               />
-              <Input
-                label={t("shopeeItemId")}
-                value={shopeeItemId}
-                onChange={(e) => setShopeeItemId(e.target.value)}
-                placeholder="12345678"
-              />
-              <Input
-                label={t("amazonProduct")}
-                value={amazonProductUrl}
-                onChange={(e) => setAmazonProductUrl(e.target.value)}
-                placeholder="https://www.amazon.co.jp/dp/B0XXXXXXX"
-              />
-              <Textarea
-                label={t("notes") || "Notes"}
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-              />
-              <Button onClick={create} loading={savingMapping} fullWidth>
-                {t("saveMappingBtn")}
-              </Button>
             </div>
           </Card>
 
-          <Card>
-            <CardHeader
-              title={t("bulkImportHint")}
-              subtitle={t("csvPlaceholder")}
-              icon="📥"
-            />
-            <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-              <Textarea
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                placeholder={t("csvPlaceholder")}
-                label={t("bulkImportHint")}
+          <div className="grid grid-2" style={{ gap: 24 }}>
+            <Card>
+              <CardHeader
+                title={t("mappingFormTitle")}
+                subtitle={t("mappingFormSubtitle")}
+                icon="🛠️"
               />
-              <Button variant="ghost" onClick={handleImport} loading={importing}>
-                {t("importCsvBtn")}
-              </Button>
-              <ul style={{ margin: 0, paddingLeft: 20, color: "var(--color-text-muted)", fontSize: 14 }}>
-                <li>{t("bulkImportHint")}</li>
-                <li>{t("searchMappings")}</li>
-              </ul>
-            </div>
-          </Card>
-        </div>
-
-        <div style={{ marginTop: 32 }}>
-        <Card>
-          <CardHeader
-            title={t("mappingTableTitle")}
-            subtitle={t("mappingTableSubtitle")}
-            icon="📋"
-          />
-          <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
-            <Input
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              placeholder={t("searchMappings") || "Search mappings..."}
-              label={t("search")}
-              fullWidth={false}
-            />
-
-            {loading ? (
-              <LoadingSpinner text={t("loading") ?? "Loading"} />
-            ) : filteredMappings.length === 0 ? (
-              <EmptyState
-                icon="🗂️"
-                title={t("noMappings") ?? "No mappings yet"}
-                description={t("noMappingsDesc")}
-                action={
-                  <Button onClick={() => setFilter("")} variant="ghost">
-                    {t("clearForm")}
-                  </Button>
-                }
-              />
-            ) : (
-              <div className="table-responsive">
-                <table className="table" style={{ minWidth: 720 }}>
-                  <thead>
-                    <tr>
-                      <th>{t("shopSelection")}</th>
-                      <th>{t("shopeeProduct")}</th>
-                      <th>{t("amazonProduct")}</th>
-                      <th>{t("status") || "Status"}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredMappings.map((m) => (
-                      <tr key={m.id}>
-                        <td>{shops.find((s) => s.id === m.shopId)?.name ?? m.shopId}</td>
-                        <td>{m.shopeeItemId}</td>
-                        <td>
-                          <a href={m.amazonProductUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>
-                            {m.amazonProductUrl}
-                          </a>
-                          {m.notes ? <div style={{ color: "#475569", fontSize: 12 }}>{m.notes}</div> : null}
-                        </td>
-                        <td>{m.isActive ? t("on") : t("off")}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <Select
+                  label={t("shopSelection")}
+                  value={shopId}
+                  onChange={(e) => setShopId(e.target.value)}
+                  options={[{ value: "", label: t("selectPlaceholder") }, ...shops.map((s) => ({ value: s.id, label: s.name }))]}
+                />
+                <Input
+                  label={t("shopeeItemId")}
+                  value={shopeeItemId}
+                  onChange={(e) => setShopeeItemId(e.target.value)}
+                  placeholder="12345678"
+                />
+                <Input
+                  label={t("amazonProduct")}
+                  value={amazonProductUrl}
+                  onChange={(e) => setAmazonProductUrl(e.target.value)}
+                  placeholder="https://www.amazon.co.jp/dp/B0XXXXXXX"
+                />
+                <Textarea
+                  label={t("notes") || "Notes"}
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                />
+                <Button onClick={create} loading={savingMapping} fullWidth>
+                  {t("saveMappingBtn")}
+                </Button>
               </div>
-            )}
+            </Card>
+
+            <Card>
+              <CardHeader
+                title={t("bulkImportHint")}
+                subtitle={t("csvPlaceholder")}
+                icon="📥"
+              />
+              <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+                <Textarea
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  placeholder={t("csvPlaceholder")}
+                  label={t("bulkImportHint")}
+                />
+                <Button variant="ghost" onClick={handleImport} loading={importing}>
+                  {t("importCsvBtn")}
+                </Button>
+                <ul style={{ margin: 0, paddingLeft: 20, color: "var(--color-text-muted)", fontSize: 14 }}>
+                  <li>{t("bulkImportHint")}</li>
+                  <li>{t("searchMappings")}</li>
+                </ul>
+              </div>
+            </Card>
           </div>
-        </Card>
+
+          <Card>
+            <CardHeader
+              title={t("mappingTableTitle")}
+              subtitle={t("mappingTableSubtitle")}
+              icon="📋"
+            />
+            <div style={{ padding: "0 24px 24px", display: "flex", flexDirection: "column", gap: 16 }}>
+              {loading ? (
+                <LoadingSpinner text={t("loading") ?? "Loading"} />
+              ) : filteredMappings.length === 0 ? (
+                <EmptyState
+                  icon="🗂️"
+                  title={t("noMappings") ?? "No mappings yet"}
+                  description={t("noMappingsDesc")}
+                  action={
+                    <Button
+                      onClick={() => {
+                        setFilter("");
+                        setShopFilter("all");
+                      }}
+                      variant="ghost"
+                    >
+                      {t("clearFilters") || t("clearForm") || "Clear"}
+                    </Button>
+                  }
+                />
+              ) : (
+                <div className="table-responsive">
+                  <table className="table" style={{ minWidth: 720 }}>
+                    <thead>
+                      <tr>
+                        <th>{t("shopSelection")}</th>
+                        <th>{t("shopeeProduct")}</th>
+                        <th>{t("amazonProduct")}</th>
+                        <th>{t("status") || "Status"}</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredMappings.map((m) => (
+                        <tr key={m.id}>
+                          <td>{shops.find((s) => s.id === m.shopId)?.name ?? m.shopId}</td>
+                          <td>{m.shopeeItemId}</td>
+                          <td>
+                            <a href={m.amazonProductUrl} target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>
+                              {m.amazonProductUrl}
+                            </a>
+                            {m.notes ? <div style={{ color: "#475569", fontSize: 12 }}>{m.notes}</div> : null}
+                          </td>
+                          <td>{m.isActive ? t("on") : t("off")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </Card>
         </div>
-      </div>
-    </div>
+      </PageLayout>
+      <Toast />
+    </>
   );
 }
 

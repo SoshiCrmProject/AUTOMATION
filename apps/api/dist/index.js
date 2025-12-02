@@ -14,7 +14,6 @@ const bcrypt_1 = __importDefault(require("bcrypt"));
 const bullmq_1 = require("bullmq");
 const zod_1 = require("zod");
 const express_rate_limit_1 = __importDefault(require("express-rate-limit"));
-const shared_1 = require("@shopee-amazon/shared");
 const secret_1 = require("./secret");
 const crypto_1 = __importDefault(require("crypto"));
 // Import new route modules
@@ -531,18 +530,58 @@ app.post("/auth/signup", asyncHandler(async (req, res) => {
 // Profit preview endpoint for UI validation
 app.post("/profit/preview", authMiddleware, asyncHandler(async (req, res) => {
     const schema = zod_1.z.object({
-        shopeeSalePrice: zod_1.z.number(),
-        amazonPrice: zod_1.z.number(),
+        shopeeOrderTotal: zod_1.z.number().optional(),
+        shopeeShippingFee: zod_1.z.number().optional(),
+        shopeeFees: zod_1.z.number().optional(),
+        amazonProductPrice: zod_1.z.number().optional(),
+        amazonShippingCost: zod_1.z.number().optional(),
+        amazonTax: zod_1.z.number().optional(),
         amazonPoints: zod_1.z.number().optional(),
+        includeDomesticShipping: zod_1.z.boolean().optional(),
+        domesticShippingCost: zod_1.z.number().optional(),
+        // Legacy field names for backward compatibility
+        shopeeSalePrice: zod_1.z.number().optional(),
+        amazonPrice: zod_1.z.number().optional(),
         domesticShipping: zod_1.z.number().optional(),
-        includePoints: zod_1.z.boolean(),
-        includeDomesticShipping: zod_1.z.boolean()
+        includePoints: zod_1.z.boolean().optional()
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success)
-        return res.status(400).json({ error: "Invalid payload" });
-    const result = (0, shared_1.calculateProfit)(parsed.data);
-    res.json(result);
+        return res.status(400).json({ error: "Invalid payload", details: parsed.error });
+    const data = parsed.data;
+    // Support both new and legacy field names
+    const shopeeTotal = (data.shopeeOrderTotal || data.shopeeSalePrice || 0) + (data.shopeeShippingFee || 0);
+    const amazonTotal = (data.amazonProductPrice || data.amazonPrice || 0) +
+        (data.amazonShippingCost || 0) +
+        (data.amazonTax || 0);
+    const fees = data.shopeeFees || 0;
+    const includePoints = data.includePoints !== undefined ? data.includePoints : true;
+    const includeDomestic = data.includeDomesticShipping !== undefined ? data.includeDomesticShipping : false;
+    const domesticShipping = data.domesticShippingCost || data.domesticShipping || 0;
+    const points = (data.amazonPoints || 0);
+    // Calculate profit
+    const shippingCost = includeDomestic ? domesticShipping : 0;
+    const pointsValue = includePoints ? points : 0;
+    const profit = shopeeTotal - amazonTotal - fees - shippingCost + pointsValue;
+    const profitMargin = shopeeTotal > 0 ? (profit / shopeeTotal) * 100 : 0;
+    // Determine if viable (positive profit)
+    const isViable = profit > 0;
+    res.json({
+        profit,
+        profitMargin,
+        shopeeTotal,
+        amazonTotal,
+        fees,
+        shipping: shippingCost,
+        isViable,
+        breakdown: {
+            revenue: shopeeTotal,
+            costs: amazonTotal,
+            fees,
+            domesticShipping: shippingCost,
+            points: pointsValue
+        }
+    });
 }));
 // Admin: list users
 app.get("/admin/users", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (_req, res) => {

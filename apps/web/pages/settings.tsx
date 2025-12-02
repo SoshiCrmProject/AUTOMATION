@@ -1,20 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import useSWR from "swr";
-import AppNav from "../components/AppNav";
+import PageLayout from "../components/PageLayout";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { settingsTour } from "../components/tourConfigs";
-import { Card } from "../components/ui/Card";
-import { Button } from "../components/ui/Button";
-import { Input } from "../components/ui/Input";
-import { Alert } from "../components/ui/Utility";
-import { Badge } from "../components/ui/Badge";
+import { Card, CardHeader, Button, Input, Alert, Badge, Select, Tabs } from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 import CredentialSetupGuide from "../components/CredentialSetupGuide";
 import api from "../lib/apiClient";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
+
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+    minimumFractionDigits: 0
+  }).format(value || 0);
 
 type Settings = {
   includeAmazonPoints: boolean;
@@ -30,7 +34,6 @@ type Settings = {
 
 export default function SettingsPage() {
   const { t } = useTranslation("common");
-  const [activeTab, setActiveTab] = useState<string>("general");
   const [showTour, setShowTour] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -94,7 +97,7 @@ export default function SettingsPage() {
 
   useEffect(() => {
     if (shops && shops.length > 0 && !shopId) {
-      setShopId(shops[0].id);
+      setShopId(shops[0].id?.toString() || "");
     }
   }, [shops, shopId]);
 
@@ -215,410 +218,485 @@ export default function SettingsPage() {
     }
   };
 
-  return (
-    <div className="shell">
-      <AppNav activeHref="/settings" />
-      <div className="container">
-        {/* Hero Section */}
-        <div style={{
-          background: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
-          padding: "48px 32px",
-          borderRadius: "var(--radius-xl)",
-          marginBottom: 32,
-          boxShadow: "var(--shadow-lg)"
-        }}>
-          <div>
-            <h1 style={{ fontSize: 36, margin: 0, color: "#fff" }}>
-              ⚙️ Settings & Configuration
-            </h1>
-            <p style={{ color: "rgba(255,255,255,0.9)", marginTop: 8, fontSize: 16 }}>
-              Configure automation rules, platform credentials, and system preferences
-            </p>
-          </div>
+  const shopOptions = useMemo(
+    () =>
+      Array.isArray(shops)
+        ? shops.map((shop: any) => ({
+            value: shop?.id?.toString() || "",
+            label: shop?.name || shop?.id?.toString() || t("unknownShop") || "Unnamed shop"
+          }))
+        : [],
+    [shops, t]
+  );
+
+  const heroHighlights = useMemo(
+    () => [
+      {
+        label: t("minExpectedProfit") || "Min expected profit",
+        value: formatCurrency(minExpectedProfit),
+        helper: t("perOrderGuardrail") || "Per-order guardrail",
+        color: "var(--color-success)"
+      },
+      {
+        label: t("maxShippingDays") || "Max shipping days",
+        value: `${maxShippingDays || 0} ${t("days") || "days"}`,
+        helper: t("deliveryPromise") || "Delivery promise",
+        color: "var(--color-info)"
+      },
+      {
+        label: t("reviewBandPercent") || "Review band",
+        value: `${reviewBandPercent || 0}%`,
+        helper: t("manualReviewBand") || "Manual review threshold",
+        color: "var(--color-warning)"
+      }
+    ],
+    [maxShippingDays, minExpectedProfit, reviewBandPercent, t]
+  );
+
+  const heroBadge = (
+    <Badge variant={isActive ? "success" : "warning"} size="lg">
+      {isActive
+        ? isDryRun
+          ? t("dryRunActive") || "Dry run active"
+          : t("automationLive") || "Automation live"
+        : t("automationPaused") || "Automation paused"}
+    </Badge>
+  );
+
+  const heroAside = (
+    <div style={{ display: "grid", gap: 12 }}>
+      {heroHighlights.map((stat) => (
+        <div
+          key={stat.label}
+          style={{
+            padding: 16,
+            borderRadius: "var(--radius-lg)",
+            background: "rgba(255,255,255,0.9)",
+            border: "1px solid rgba(255,255,255,0.6)",
+            boxShadow: "var(--shadow-sm)"
+          }}
+        >
+          <span style={{ fontSize: 12, letterSpacing: 0.4, textTransform: "uppercase", color: "rgba(15,23,42,0.6)" }}>
+            {stat.label}
+          </span>
+          <div style={{ fontSize: 28, fontWeight: 800, color: stat.color }}>{stat.value}</div>
+          <p style={{ margin: 0, fontSize: 13, color: "rgba(15,23,42,0.7)" }}>{stat.helper}</p>
         </div>
+      ))}
+    </div>
+  );
 
-        {/* Status Cards */}
-        {settings && (
-          <div className="grid grid-3" style={{ marginBottom: 24 }}>
-            <Card>
-              <div style={{ textAlign: "center", padding: 12 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>
-                  {isActive ? "✅" : "⏸️"}
-                </div>
-                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                  Automation Status
-                </div>
-                <Badge variant={isActive ? "success" : "warning"}>
-                  {isActive ? "Active" : "Inactive"}
-                </Badge>
-              </div>
-            </Card>
-            <Card>
-              <div style={{ textAlign: "center", padding: 12 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>
-                  {isDryRun ? "🧪" : "🚀"}
-                </div>
-                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                  Execution Mode
-                </div>
-                <Badge variant={isDryRun ? "info" : "success"}>
-                  {isDryRun ? "Dry Run" : "Live"}
-                </Badge>
-              </div>
-            </Card>
-            <Card>
-              <div style={{ textAlign: "center", padding: 12 }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>💰</div>
-                <div style={{ fontSize: 14, color: "var(--color-text-muted)", marginBottom: 4 }}>
-                  Min Expected Profit
-                </div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: "var(--color-success)" }}>
-                  ${(minExpectedProfit || 0).toFixed(2)}
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {shopId
+        ? `${t("trackingShop") || "Tracking shop"} ${shopId}. ${t("settingsHeroFooter") || "Guardrails save per shop."}`
+        : t("selectShopToLoad") || "Select a shop to load guardrails."}
+    </span>
+  );
 
-        {/* Instructions Alert */}
-        <div style={{ marginBottom: 24 }}>
-          <Alert variant="info">
-            <strong>Setup Instructions</strong>
-            <ol style={{ marginTop: 8, marginBottom: 0, paddingLeft: 20 }}>
-              <li>Configure Shopee API credentials (Partner ID, Partner Key, Shop ID)</li>
-              <li>Set up Amazon seller credentials (email & password for automation)</li>
-              <li>Define automation rules (shipping days, profit margins, pricing)</li>
-              <li>Test webhook notifications (Slack/Discord integration)</li>
-              <li>Enable automation when ready (toggle Active status)</li>
-            </ol>
-          </Alert>
+  const replayTour = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("tour_completed_settings");
+      setShowTour(true);
+      window.location.reload();
+    }
+  };
+
+  const heroActions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={handleSaveSettings} disabled={loading}>
+        💾 {t("saveGuardrails") || "Save guardrails"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={replayTour}>
+        🎥 {t("replayTour") || "Replay tour"}
+      </Button>
+    </div>
+  );
+
+  const hasShops = shopOptions.length > 0;
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "flex-end" }}>
+      <div style={{ flex: "1 1 260px", minWidth: 220 }}>
+        <Select
+          label={t("shopId") || "Shop"}
+          value={shopId}
+          onChange={(e) => setShopId(e.target.value)}
+          options={hasShops ? shopOptions : [{ value: "", label: t("noShopsAvailable") || "No shops detected" }]}
+          disabled={!hasShops}
+        />
+      </div>
+      <Button type="button" variant="ghost" onClick={() => refreshSettings()} disabled={loading}>
+        ♻️ {t("refreshData") || "Refresh"}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => setShopId(shops?.[0]?.id?.toString() || "")}
+        disabled={!hasShops}
+      >
+        🔄 {t("resetSelection") || "Reset selection"}
+      </Button>
+    </div>
+  );
+
+  const automationSummary = (
+    <Card hover={false}>
+      <CardHeader
+        title={t("automationSummary") || "Automation summary"}
+        subtitle={t("liveGuardrailsSnapshot") || "Live guardrails snapshot"}
+        icon="📊"
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("automationStatus") || "Status"}</span>
+          <Badge variant={isActive ? "success" : "warning"}>{isActive ? t("active") || "Active" : t("inactive") || "Inactive"}</Badge>
         </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("executionMode") || "Execution mode"}</span>
+          <Badge variant={isDryRun ? "info" : "success"}>{isDryRun ? t("dryRun") || "Dry run" : t("live") || "Live"}</Badge>
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <span style={{ color: "var(--color-text-muted)" }}>{t("minExpectedProfit") || "Min expected profit"}</span>
+          <span style={{ fontWeight: 600 }}>{formatCurrency(minExpectedProfit)}</span>
+        </div>
+      </div>
+    </Card>
+  );
 
-        {/* Tabbed Settings Interface */}
-        <Card>
-          <div
-            className="tabs-header"
-            style={{
-              display: 'flex',
-              gap: '8px',
-              borderBottom: '2px solid var(--color-border)',
-              marginBottom: '24px',
-              overflowX: 'auto',
-            }}
-          >
-            {[
-              { id: "general", label: "General", icon: "⚙️" },
-              { id: "shopee", label: "Shopee", icon: "🛍️" },
-              { id: "amazon", label: "Amazon", icon: "📦" },
-              { id: "notifications", label: "Notifications", icon: "🔔" }
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  padding: '14px 20px',
-                  fontSize: '14px',
-                  fontWeight: activeTab === tab.id ? 700 : 500,
-                  color: activeTab === tab.id ? 'var(--color-primary)' : 'var(--color-text-muted)',
-                  cursor: 'pointer',
-                  position: 'relative',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  transition: 'all 0.2s ease',
-                  borderBottom: activeTab === tab.id ? '2px solid var(--color-primary)' : '2px solid transparent',
-                  marginBottom: '-2px',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
-          </div>
+  const checklistCard = (
+    <Card hover={false}>
+      <CardHeader
+        title={t("setupChecklist") || "Setup checklist"}
+        subtitle={t("followStepsToLaunch") || "Follow these steps before you go live"}
+        icon="✅"
+      />
+      <ol style={{ margin: 0, paddingLeft: 20, color: "var(--color-text-muted)", display: "flex", flexDirection: "column", gap: 6 }}>
+        <li>{t("configureShopeeCredentials") || "Configure Shopee API credentials"}</li>
+        <li>{t("saveAmazonCredentials") || "Save Amazon login & shipping label"}</li>
+        <li>{t("defineGuardrails") || "Define profit + shipping guardrails"}</li>
+        <li>{t("testWebhooks") || "Test alert webhooks"}</li>
+        <li>{t("enableAutomation") || "Enable automation when ready"}</li>
+      </ol>
+    </Card>
+  );
 
-          {/* General Tab */}
-          {activeTab === "general" && (
-            <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Automation Rules</h3>
-              
-              <div className="grid grid-2" style={{ gap: 16, marginBottom: 24 }}>
-                <div>
-                  <label className="label">Max Shipping Days</label>
-                  <Input
-                    type="number"
-                    value={maxShippingDays}
-                    onChange={(e) => setMaxShippingDays(Number(e.target.value))}
-                    hint={t("hintMaxDeliveryTime")}
-                  />
-                </div>
-                <div>
-                  <label className="label">Min Expected Profit ($)</label>
-                  <Input
-                    type="number"
-                    value={minExpectedProfit}
-                    onChange={(e) => setMinExpectedProfit(Number(e.target.value))}
-                    hint={t("hintMinProfitMargin")}
-                  />
-                </div>
-                <div>
-                  <label className="label">Domestic Shipping Cost ($)</label>
-                  <Input
-                    type="number"
-                    value={domesticShippingCost}
-                    onChange={(e) => setDomesticShippingCost(Number(e.target.value))}
-                    hint={t("hintDomesticShippingCost")}
-                  />
-                </div>
-                <div>
-                  <label className="label">Review Band Percent (%)</label>
-                  <Input
-                    type="number"
-                    value={reviewBandPercent}
-                    onChange={(e) => setReviewBandPercent(Number(e.target.value))}
-                    hint={t("hintManualReviewBand")}
-                  />
-                </div>
-              </div>
+  const helpCard = (
+    <Card hover={false}>
+      <CardHeader
+        title={t("needHelp") || "Need help?"}
+        subtitle={t("openGuidesOrReplayTour") || "Open guides or replay the onboarding tour"}
+        icon="💡"
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <Button type="button" variant="ghost" onClick={replayTour}>
+          🎥 {t("replayTour") || "Replay tour"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            if (typeof window !== "undefined") {
+              window.open("/SHOPEE_CREDENTIALS_GUIDE.md", "_blank");
+            }
+          }}
+        >
+          📘 {t("openDocs") || "Open credential docs"}
+        </Button>
+      </div>
+    </Card>
+  );
 
-              <h3 style={{ marginBottom: 16 }}>Options</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={includeAmazonPoints}
-                    onChange={(e) => setIncludeAmazonPoints(e.target.checked)}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  <span>Include Amazon Points in calculations</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={includeDomesticShipping}
-                    onChange={(e) => setIncludeDomesticShipping(e.target.checked)}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  <span>Include Domestic Shipping costs</span>
-                </label>
-              </div>
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {automationSummary}
+      {checklistCard}
+      {helpCard}
+    </div>
+  );
 
-              <h3 style={{ marginBottom: 16 }}>Execution Mode</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 24 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={isActive}
-                    onChange={(e) => setIsActive(e.target.checked)}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  <span style={{ fontWeight: 600 }}>Enable Automation</span>
-                </label>
-                <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
-                  <input
-                    type="checkbox"
-                    checked={isDryRun}
-                    onChange={(e) => setIsDryRun(e.target.checked)}
-                    style={{ width: 18, height: 18 }}
-                  />
-                  <span>Dry Run Mode (test without actual orders)</span>
-                </label>
-              </div>
+  const generalTab = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <div className="grid grid-2" style={{ gap: 16 }}>
+        <div>
+          <label className="label">{t("maxShippingDays") || "Max shipping days"}</label>
+          <Input
+            type="number"
+            value={maxShippingDays}
+            onChange={(e) => setMaxShippingDays(Number(e.target.value))}
+            hint={t("hintMaxDeliveryTime")}
+          />
+        </div>
+        <div>
+          <label className="label">{t("minExpectedProfit") || "Min expected profit"}</label>
+          <Input
+            type="number"
+            value={minExpectedProfit}
+            onChange={(e) => setMinExpectedProfit(Number(e.target.value))}
+            hint={t("hintMinProfitMargin")}
+          />
+        </div>
+        <div>
+          <label className="label">{t("domesticShippingCost") || "Domestic shipping cost"}</label>
+          <Input
+            type="number"
+            value={domesticShippingCost}
+            onChange={(e) => setDomesticShippingCost(Number(e.target.value))}
+            hint={t("hintDomesticShippingCost")}
+          />
+        </div>
+        <div>
+          <label className="label">{t("reviewBandPercent") || "Review band percent"}</label>
+          <Input
+            type="number"
+            value={reviewBandPercent}
+            onChange={(e) => setReviewBandPercent(Number(e.target.value))}
+            hint={t("hintManualReviewBand")}
+          />
+        </div>
+        <div>
+          <label className="label">{t("autoFulfillmentMode") || "Auto-fulfillment mode"}</label>
+          <Select
+            value={autoFulfillmentMode}
+            onChange={(e) => setAutoFulfillmentMode(e.target.value)}
+            options={[
+              { value: "AUTO", label: t("autoMode") || "Auto fulfill" },
+              { value: "REVIEW", label: t("reviewMode") || "Manual review" }
+            ]}
+          />
+        </div>
+      </div>
 
-              <Button onClick={handleSaveSettings} variant="primary" fullWidth disabled={loading}>
-                💾 Save General Settings
-              </Button>
-            </div>
-          )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={includeAmazonPoints}
+            onChange={(e) => setIncludeAmazonPoints(e.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+          <span>{t("includeAmazonPoints") || "Include Amazon points in calculations"}</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={includeDomesticShipping}
+            onChange={(e) => setIncludeDomesticShipping(e.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+          <span>{t("includeDomesticShipping") || "Include domestic shipping costs"}</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+          <span style={{ fontWeight: 600 }}>{t("enableAutomation") || "Enable automation"}</span>
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 12, cursor: "pointer" }}>
+          <input
+            type="checkbox"
+            checked={isDryRun}
+            onChange={(e) => setIsDryRun(e.target.checked)}
+            style={{ width: 18, height: 18 }}
+          />
+          <span>{t("dryRunMode") || "Dry run mode (no live orders)"}</span>
+        </label>
+      </div>
 
-          {/* Shopee Tab */}
-          {activeTab === "shopee" && (
-            <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>🛍️ Shopee API Credentials</h3>
-              
-              {/* Help Instructions */}
-              <div style={{ marginBottom: 24 }}>
-                <Alert variant="info" title={`📚 ${t("howToGetShopeeCredentials")}`}>
-                  <ol style={{ margin: "8px 0", paddingLeft: 20, lineHeight: 1.8 }}>
-                    <li>Go to <strong>https://open.shopee.com/</strong></li>
-                    <li>Register and create a new app</li>
-                    <li>Get Partner ID and Partner Key from app settings</li>
-                    <li>Get Shop ID from your seller center</li>
-                    <li>See <strong>SHOPEE_CREDENTIALS_GUIDE.md</strong> for detailed steps</li>
-                  </ol>
-                </Alert>
-              </div>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                <Input
-                  label="Partner ID 🔢"
-                  value={shopeePartnerId}
-                  onChange={(e) => setShopeePartnerId(e.target.value)}
-                  placeholder={t("partnerIDPlaceholder")}
-                  hint={t("hintPartnerID")}
-                />
-                <Input
-                  label="Partner Key 🔐"
-                  type="password"
-                  value={shopeePartnerKey}
-                  onChange={(e) => setShopeePartnerKey(e.target.value)}
-                  placeholder={t("partnerKeyPlaceholder")}
-                  hint={t("hintPartnerKey")}
-                />
-                <Input
-                  label="Shop ID 🏪"
-                  value={shopeeShopId}
-                  onChange={(e) => setShopeeShopId(e.target.value)}
-                  placeholder={t("shopIDPlaceholder")}
-                  hint={t("hintShopID")}
-                />
-              </div>
+      <Button onClick={handleSaveSettings} variant="primary" fullWidth disabled={loading}>
+        💾 {t("saveGeneralSettings") || "Save general settings"}
+      </Button>
+    </div>
+  );
 
-              {/* Validation Status */}
-              {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
-                <div style={{ marginBottom: 16 }}>
-                  <Alert variant="success" title={`✅ ${t("allFieldsFilled")}`}>
-                    Ready to save. Click the button below to securely store your credentials.
-                  </Alert>
-                </div>
-              )}
+  const shopeeTab = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <Alert variant="info" title={`📚 ${t("howToGetShopeeCredentials")}`}>
+        <ol style={{ margin: "8px 0", paddingLeft: 20, lineHeight: 1.8 }}>
+          <li>Go to <strong>https://open.shopee.com/</strong></li>
+          <li>Register and create a new app</li>
+          <li>Get Partner ID and Partner Key from app settings</li>
+          <li>Get Shop ID from your seller center</li>
+          <li>See <strong>SHOPEE_CREDENTIALS_GUIDE.md</strong> for detailed steps</li>
+        </ol>
+      </Alert>
 
-              <Button onClick={handleSaveShopeeCredentials} variant="primary" fullWidth disabled={loading}>
-                🔑 Save Shopee Credentials (Encrypted)
-              </Button>
-              
-              {/* Credential Setup Guide */}
-              <CredentialSetupGuide platform="shopee" />
-              
-              {/* Test Connection */}
-              {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
-                <div style={{ marginTop: 16 }}>
-                  <Button onClick={async () => {
-                    try {
-                      await api.post("/orders/poll-now");
-                      pushToast("✅ Test poll initiated! Check Orders page for results.", "success");
-                    } catch (e: any) {
-                      pushToast("Test failed: " + (e.response?.data?.error || "Unknown error"), "error");
-                    }
-                  }} variant="ghost" fullWidth>
-                    🧪 Test Connection
-                  </Button>
-                </div>
-              )}
-            </div>
-          )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <Input
+          label="Partner ID 🔢"
+          value={shopeePartnerId}
+          onChange={(e) => setShopeePartnerId(e.target.value)}
+          placeholder={t("partnerIDPlaceholder")}
+          hint={t("hintPartnerID")}
+        />
+        <Input
+          label="Partner Key 🔐"
+          type="password"
+          value={shopeePartnerKey}
+          onChange={(e) => setShopeePartnerKey(e.target.value)}
+          placeholder={t("partnerKeyPlaceholder")}
+          hint={t("hintPartnerKey")}
+        />
+        <Input
+          label="Shop ID 🏪"
+          value={shopeeShopId}
+          onChange={(e) => setShopeeShopId(e.target.value)}
+          placeholder={t("shopIDPlaceholder")}
+          hint={t("hintShopID")}
+        />
+      </div>
 
-          {/* Amazon Tab */}
-          {activeTab === "amazon" && (
-            <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>📦 Amazon Seller Credentials</h3>
-              <div style={{ marginBottom: 24 }}>
-                <Alert variant="warning" title={`🔒 ${t("securityNotice")}`}>
-                  These credentials are encrypted (AES-256-GCM) and used only for automated browser login.
-                  Never shared with third parties.
-                </Alert>
-              </div>
-              
-              <div style={{ marginBottom: 16 }}>
-                <Alert variant="info" title={`ℹ️ ${t("whatThisDoes")}`}>
-                  Our system uses Playwright to automate Amazon purchases. We need your login to:
-                  <ul style={{ margin: "8px 0", paddingLeft: 20 }}>
-                    <li>Check product availability and prices</li>
-                    <li>Add items to cart automatically</li>
-                    <li>Complete checkout with your saved payment method</li>
-                  </ul>
-                </Alert>
-              </div>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                <Input
-                  label="Amazon Email 📧"
-                  type="email"
-                  value={amazonEmail}
-                  onChange={(e) => setAmazonEmail(e.target.value)}
-                  placeholder={t("emailPlaceholder")}
-                  hint={t("hintAmazonEmail")}
-                />
-                <Input
-                  label="Amazon Password 🔑"
-                  type="password"
-                  value={amazonPassword}
-                  onChange={(e) => setAmazonPassword(e.target.value)}
-                  placeholder={t("passwordPlaceholder")}
-                  hint={t("hintAmazonPassword")}
-                />
-                <Input
-                  label="Shipping Label 🏷️"
-                  value={amazonShippingLabel}
-                  onChange={(e) => setAmazonShippingLabel(e.target.value)}
-                  placeholder={t("warehousePlaceholder")}
-                  hint={t("hintDefaultShippingLabel")}
-                />
-              </div>
+      {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
+        <Alert variant="success" title={`✅ ${t("allFieldsFilled")}`}>
+          {t("readyToSaveShopee") || "Ready to save. Click below to securely store your credentials."}
+        </Alert>
+      )}
 
-              <Button onClick={handleSaveAmazonCredentials} variant="primary" fullWidth disabled={loading}>
-                🔑 Save Amazon Credentials (Encrypted)
-              </Button>
-              
-              {/* Amazon Credential Setup Guide */}
-              <CredentialSetupGuide platform="amazon" />
-            </div>
-          )}
+      <Button onClick={handleSaveShopeeCredentials} variant="primary" fullWidth disabled={loading}>
+        🔑 {t("saveShopeeCredentials") || "Save Shopee credentials (encrypted)"}
+      </Button>
 
-          {/* Notifications Tab */}
-          {activeTab === "notifications" && (
-            <div style={{ marginTop: 24 }}>
-              <h3 style={{ marginTop: 0, marginBottom: 16 }}>Alert Webhook</h3>
-              <div style={{ marginBottom: 24 }}>
-                <Alert variant="info">
-                  Configure Slack or Discord webhook URL to receive real-time alerts
-                </Alert>
-              </div>
-              
-              <div style={{ display: "flex", flexDirection: "column", gap: 16, marginBottom: 24 }}>
-                <Input
-                  label="Webhook URL"
-                  value={alertWebhookUrl}
-                  onChange={(e) => setAlertWebhookUrl(e.target.value)}
-                  placeholder={t("webhookPlaceholder")}
-                  hint={t("hintWebhookURL")}
-                />
-              </div>
+      <CredentialSetupGuide platform="shopee" />
 
-              <div style={{ display: "flex", gap: 12 }}>
-                <Button onClick={handleTestWebhook} variant="ghost" fullWidth disabled={loading}>
-                  🧪 Test Webhook
-                </Button>
-                <Button variant="primary" fullWidth disabled={loading}>
-                  💾 Save Webhook
-                </Button>
-              </div>
-            </div>
-          )}
-        </Card>
+      {shopeePartnerId && shopeePartnerKey && shopeeShopId && (
+        <Button
+          onClick={async () => {
+            try {
+              await api.post("/orders/poll-now");
+              pushToast("✅ Test poll initiated! Check Orders page for results.", "success");
+            } catch (e: any) {
+              pushToast("Test failed: " + (e.response?.data?.error || "Unknown error"), "error");
+            }
+          }}
+          variant="ghost"
+          fullWidth
+        >
+          🧪 {t("testConnection") || "Test connection"}
+        </Button>
+      )}
+    </div>
+  );
 
-        <Toast />
+  const amazonTab = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <Alert variant="warning" title={`🔒 ${t("securityNotice")}`}>
+        {t("amazonCredentialSecurity") ||
+          "These credentials are encrypted (AES-256-GCM) and used only for automated browser login."}
+      </Alert>
+      <Alert variant="info" title={`ℹ️ ${t("whatThisDoes")}`}>
+        {t("amazonAutomationExplainer") || "We use Playwright to automate purchases. Credentials stay on this server."}
+      </Alert>
 
-        {mounted && (
-          <>
-            <OnboardingTour 
-              pageName="settings" 
-              steps={settingsTour} 
-              onComplete={() => setShowTour(false)} 
-            />
-            {!showTour && <HelpButton onClick={() => {
-              if (typeof window !== 'undefined') {
-                localStorage.removeItem("tour_completed_settings");
-                setShowTour(true);
-                window.location.reload();
-              }
-            }} />}
-          </>
-        )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <Input
+          label="Amazon Email 📧"
+          type="email"
+          value={amazonEmail}
+          onChange={(e) => setAmazonEmail(e.target.value)}
+          placeholder={t("emailPlaceholder")}
+          hint={t("hintAmazonEmail")}
+        />
+        <Input
+          label="Amazon Password 🔑"
+          type="password"
+          value={amazonPassword}
+          onChange={(e) => setAmazonPassword(e.target.value)}
+          placeholder={t("passwordPlaceholder")}
+          hint={t("hintAmazonPassword")}
+        />
+        <Input
+          label="Shipping Label 🏷️"
+          value={amazonShippingLabel}
+          onChange={(e) => setAmazonShippingLabel(e.target.value)}
+          placeholder={t("warehousePlaceholder")}
+          hint={t("hintDefaultShippingLabel")}
+        />
+      </div>
+
+      <Button onClick={handleSaveAmazonCredentials} variant="primary" fullWidth disabled={loading}>
+        🔑 {t("saveAmazonCredentials") || "Save Amazon credentials (encrypted)"}
+      </Button>
+
+      <CredentialSetupGuide platform="amazon" />
+    </div>
+  );
+
+  const notificationsTab = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+      <Alert variant="info">{t("webhookInstructions") || "Configure Slack or Discord webhook URL for alerts."}</Alert>
+      <Input
+        label="Webhook URL"
+        value={alertWebhookUrl}
+        onChange={(e) => setAlertWebhookUrl(e.target.value)}
+        placeholder={t("webhookPlaceholder")}
+        hint={t("hintWebhookURL")}
+      />
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <Button onClick={handleTestWebhook} variant="ghost" fullWidth disabled={loading}>
+          🧪 {t("testWebhook") || "Test webhook"}
+        </Button>
+        <Button variant="primary" fullWidth disabled={loading}>
+          💾 {t("saveWebhook") || "Save webhook"}
+        </Button>
       </div>
     </div>
+  );
+
+  const tabItems = [
+    { id: "general", label: t("general") || "General", icon: "⚙️", content: generalTab },
+    { id: "shopee", label: "Shopee", icon: "🛍️", content: shopeeTab },
+    { id: "amazon", label: "Amazon", icon: "📦", content: amazonTab },
+    { id: "notifications", label: t("notifications") || "Notifications", icon: "🔔", content: notificationsTab }
+  ];
+
+  return (
+    <>
+      <Toast />
+      <PageLayout
+        activeHref="/settings"
+        title="⚙️ Settings & Configuration"
+        description={t("settingsHeroDescription") || "Configure automation rules, credentials, and alerting."}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        actions={heroActions}
+        toolbar={toolbar}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(120deg, #fef9c3 0%, #fde68a 40%, #cffafe 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          <Alert variant="info">
+            <strong>{t("setupInstructions") || "Setup instructions"}</strong>
+            <ol style={{ marginTop: 8, marginBottom: 0, paddingLeft: 20 }}>
+              <li>{t("configureShopeeCredentials") || "Configure Shopee API credentials."}</li>
+              <li>{t("setupAmazonCredentials") || "Set up Amazon seller credentials."}</li>
+              <li>{t("defineAutomationRules") || "Define automation rules (shipping days, profits)."}</li>
+              <li>{t("testNotifications") || "Test webhook notifications."}</li>
+              <li>{t("enableAutomation") || "Enable automation when ready."}</li>
+            </ol>
+          </Alert>
+
+          {settingsError && (
+            <Alert variant="error" title={t("failedToLoadSettings") || "Failed to load settings"}>
+              {settingsError.message}
+            </Alert>
+          )}
+
+          <Card>
+            <Tabs tabs={tabItems} defaultTab="general" />
+          </Card>
+        </div>
+      </PageLayout>
+
+      {mounted && (
+        <>
+          <OnboardingTour pageName="settings" steps={settingsTour} onComplete={() => setShowTour(false)} />
+          {!showTour && <HelpButton onClick={replayTour} />}
+        </>
+      )}
+    </>
   );
 }
 

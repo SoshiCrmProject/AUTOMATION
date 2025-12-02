@@ -12,6 +12,7 @@
 ## 📊 Test Coverage Breakdown
 
 ### 1. **Profit Calculation** (6 tests)
+
 - ✅ Positive profit calculation
 - ✅ Negative profit detection
 - ✅ Amazon points inclusion
@@ -20,6 +21,7 @@
 - ✅ Edge cases
 
 ### 2. **Authentication** (6 tests)
+
 - ✅ JWT token generation
 - ✅ Token payload validation
 - ✅ Password hashing (bcrypt)
@@ -28,6 +30,7 @@
 - ✅ Invalid token rejection
 
 ### 3. **React Components** (9 tests)
+
 - ✅ ErrorBoundary: render children
 - ✅ ErrorBoundary: catch errors
 - ✅ ErrorBoundary: reload button
@@ -38,6 +41,7 @@
 - ✅ Toast: auto-dismiss
 
 ### 4. **Integration Tests** (10 tests)
+
 - ✅ Amazon buying profit calculation
 - ✅ Non-viable order detection
 - ✅ Amazon points exclusion logic
@@ -52,48 +56,58 @@
 ### 5. **🆕 E2E Flow Simulation** (27 tests)
 
 #### **Step 1: Shopee Order Reception** (1 test)
+
 - ✅ Validates incoming order structure (orderId, items, shipping address)
 
 #### **Step 2: Product Mapping Lookup** (2 tests)
+
 - ✅ Finds Amazon URL from Shopee item ID
 - ✅ Handles missing product mappings
 
 #### **Step 3: Amazon Product Scraping** (3 tests)
+
 - ✅ Extracts product data (ASIN, price, availability, shipping)
 - ✅ Handles out-of-stock scenarios
 - ✅ Calculates shipping days from delivery date
 
 #### **Step 4: Profit Calculation** (2 tests)
+
 - ✅ Calculates: ¥15,000 - ¥12,000 + ¥1,200 - ¥800 = ¥3,400 profit
 - ✅ Rejects orders below ¥1,000 minimum profit
 
 #### **Step 5: Order Decision Making** (3 tests)
+
 - ✅ Approves orders meeting all criteria
 - ✅ Respects dry-run mode (no actual purchases)
 - ✅ Rejects orders exceeding shipping days limit
 
 #### **Step 6: Amazon Purchase Simulation** (4 tests)
+
 - ✅ Simulates login flow (6 steps)
 - ✅ Simulates add-to-cart (5 steps)
 - ✅ Simulates checkout process (8 steps)
 - ✅ Captures order confirmation with amazonOrderId
 
 #### **Step 7: Database Recording** (3 tests)
+
 - ✅ Saves Shopee order (processingStatus: PROCESSING)
 - ✅ Saves Amazon order (amazonOrderId, status: PLACED)
 - ✅ Updates to COMPLETED status
 
 #### **Step 8: Error Handling** (4 tests)
+
 - ✅ Amazon login failure (AMAZON_LOGIN_FAILED)
 - ✅ Out of stock (AMAZON_OUT_OF_STOCK, shouldRetry: true)
 - ✅ Low profit (PROFIT_TOO_LOW, ¥300 < ¥1,000)
 - ✅ Shipping too slow (SHIPPING_TOO_SLOW, 10 days > 7 days)
 
 #### **Step 9: Complete Flow Integration** (2 tests)
+
 - ✅ Complete successful flow (9 steps: receive → map → scrape → calculate → approve → purchase → save → complete)
 - ✅ Complete rejection flow (profit too low)
 
 #### **Step 10: Queue & Worker Simulation** (3 tests)
+
 - ✅ Add job to queue (type: 'process-order', maxAttempts: 3)
 - ✅ Process job successfully (status: completed)
 - ✅ Retry failed jobs (attempts < maxAttempts)
@@ -116,6 +130,7 @@ graph TD
 ```
 
 ### Flow Steps Tested:
+
 1. ✅ **Shopee Order Reception** - Validate order structure
 2. ✅ **Product Mapping** - Find Amazon product URL
 3. ✅ **Amazon Scraping** - Extract price, availability, shipping
@@ -153,6 +168,7 @@ Time:        6.151 s
 The E2E tests are **simulation tests** that validate all logic without making real Amazon purchases.
 
 **Why Simulation?**
+
 - ✅ No actual Amazon credentials required
 - ✅ No payment methods needed
 - ✅ Tests run in milliseconds
@@ -160,6 +176,7 @@ The E2E tests are **simulation tests** that validate all logic without making re
 - ✅ Validates all logic and error handling
 
 **For Real Production Testing**, you would need:
+
 - 🔐 Actual Amazon JP credentials
 - 💳 Payment method configured
 - 🌐 Browser automation (Puppeteer/Playwright)
@@ -169,6 +186,7 @@ The E2E tests are **simulation tests** that validate all logic without making re
 ### ✅ What's Validated
 
 The simulation tests confirm that:
+
 1. ✅ All order processing logic works correctly
 2. ✅ Profit calculations are accurate
 3. ✅ Error handling catches all failure scenarios
@@ -191,6 +209,7 @@ The simulation tests confirm that:
 - ✅ **Code quality**: Prettier formatting
 
 ### Git Commits
+
 - `407156e` - test: add comprehensive E2E flow simulation (27 tests)
 - `534ebf6` - docs: add comprehensive test summary
 - `d296d8a` - test: add integration tests for Amazon buying
@@ -202,6 +221,7 @@ The simulation tests confirm that:
 ## 📦 Next Steps
 
 ### For Development:
+
 ```bash
 npm test              # Run all tests
 npm test:coverage     # Check coverage
@@ -209,6 +229,7 @@ npm run build         # Build for production
 ```
 
 ### For Production Testing:
+
 1. Deploy to production environment
 2. Configure Amazon JP credentials
 3. Add payment method
@@ -230,7 +251,7 @@ All Amazon buying flow logic has been **thoroughly tested and validated** throug
 
 ---
 
-*Generated: 2024*  
-*Total Tests: 58 passing*  
-*Success Rate: 100%*  
-*Execution Time: 6.15s*
+_Generated: 2024_  
+_Total Tests: 58 passing_  
+_Success Rate: 100%_  
+_Execution Time: 6.15s_

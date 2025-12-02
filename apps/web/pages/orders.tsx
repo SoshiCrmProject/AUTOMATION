@@ -1,16 +1,28 @@
+import { useMemo, useState, useEffect } from "react";
 import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
-import AppNav from "../components/AppNav";
-import { useMemo, useState, useEffect } from "react";
 import api from "../lib/apiClient";
+import PageLayout from "../components/PageLayout";
 import Toast, { pushToast } from "../components/Toast";
 import OnboardingTour, { HelpButton } from "../components/OnboardingTour";
 import { ordersTour } from "../components/tourConfigs";
-import { 
-  Card, CardHeader, StatCard, Button, Badge, Input, Select,
-  Table, Modal, Tabs, Alert, LoadingSpinner, EmptyState 
+import {
+  Card,
+  CardHeader,
+  StatCard,
+  Button,
+  Badge,
+  Input,
+  Select,
+  Table,
+  Modal,
+  Alert,
+  LoadingSpinner,
+  EmptyState,
 } from "../components/ui/index";
+
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 type Order = {
   id: string;
@@ -34,8 +46,6 @@ type OrderStats = {
   todayProcessed: number;
 };
 
-const fetcher = (url: string) => api.get(url).then((res) => res.data);
-
 export default function OrdersPage() {
   const { t } = useTranslation("common");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -46,73 +56,95 @@ export default function OrdersPage() {
   const [loading, setLoading] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set());
   const [autoRefresh, setAutoRefresh] = useState(true);
-  
+
   const { data: orders, error, mutate: refreshOrders } = useSWR<Order[]>(
     "/orders/recent",
     fetcher,
-    { 
+    {
       revalidateOnFocus: false,
-      refreshInterval: autoRefresh ? 30000 : 0 // Auto-refresh every 30 seconds if enabled
+      refreshInterval: autoRefresh ? 30000 : 0,
     }
   );
-
-  // Show notification when orders update
-  useEffect(() => {
-    if (orders && orders.length > 0) {
-      const todayProcessed = orders.filter(o => {
-        const updatedToday = new Date(o.updatedAt).toDateString() === new Date().toDateString();
-        return updatedToday && o.processingStatus === "FULFILLED";
-      }).length;
-      
-      if (todayProcessed > (stats.todayProcessed || 0) && todayProcessed > 0) {
-        pushToast(`🎉 ${todayProcessed} orders processed today!`, "success");
-      }
-    }
-  }, [orders]);
 
   const isLoading = !orders && !error;
   const ordersArray = Array.isArray(orders) ? orders : [];
 
-  // Calculate stats
   const stats: OrderStats = useMemo(() => {
-    if (!ordersArray.length) return { total: 0, fulfilled: 0, failed: 0, pending: 0, todayProcessed: 0 };
-    
+    if (!ordersArray.length) {
+      return { total: 0, fulfilled: 0, failed: 0, pending: 0, todayProcessed: 0 };
+    }
+
     const today = new Date().toDateString();
     return {
       total: ordersArray.length,
-      fulfilled: ordersArray.filter(o => o.processingStatus === "FULFILLED").length,
-      failed: ordersArray.filter(o => o.processingStatus === "FAILED" || o.processingStatus === "SKIPPED").length,
-      pending: ordersArray.filter(o => !o.amazonOrder && ["QUEUED", "PROCESSING", "UNPROCESSED"].includes(o.processingStatus)).length,
-      todayProcessed: ordersArray.filter(o => new Date(o.updatedAt).toDateString() === today).length
+      fulfilled: ordersArray.filter((o) => o.processingStatus === "FULFILLED").length,
+      failed: ordersArray.filter((o) => o.processingStatus === "FAILED" || o.processingStatus === "SKIPPED").length,
+      pending: ordersArray.filter((o) => !o.amazonOrder && ["QUEUED", "PROCESSING", "UNPROCESSED"].includes(o.processingStatus)).length,
+      todayProcessed: ordersArray.filter((o) => new Date(o.updatedAt).toDateString() === today).length,
     };
   }, [ordersArray]);
 
-  // Filter orders
+  useEffect(() => {
+    if (!ordersArray.length) return;
+
+    const today = new Date().toDateString();
+    const fulfilledToday = ordersArray.filter(
+      (order) => new Date(order.updatedAt).toDateString() === today && order.processingStatus === "FULFILLED"
+    ).length;
+
+    if (fulfilledToday > stats.todayProcessed && fulfilledToday > 0) {
+      pushToast(`🎉 ${fulfilledToday} ${t("ordersProcessedToday") || "orders processed today"}!`, "success");
+    }
+  }, [ordersArray, stats.todayProcessed, t]);
+
   const filteredOrders = useMemo(() => {
-    return ordersArray.filter(order => {
-      const matchesStatus = 
+    return ordersArray.filter((order) => {
+      const matchesStatus =
         statusFilter === "all" ||
         (statusFilter === "fulfilled" && order.processingStatus === "FULFILLED") ||
-        (statusFilter === "failed" && (order.processingStatus === "FAILED" || order.processingStatus === "SKIPPED")) ||
+        (statusFilter === "failed" && ["FAILED", "SKIPPED"].includes(order.processingStatus)) ||
         (statusFilter === "pending" && !order.amazonOrder && ["QUEUED", "PROCESSING", "UNPROCESSED"].includes(order.processingStatus));
-      
-      const matchesSearch = !searchTerm ||
+
+      const matchesSearch =
+        !searchTerm ||
         order.shopeeOrderSn.toLowerCase().includes(searchTerm.toLowerCase()) ||
         order.amazonOrder?.amazonOrderId?.toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       return matchesStatus && matchesSearch;
     });
   }, [ordersArray, statusFilter, searchTerm]);
 
-  // Handlers
+  const errorInsights = useMemo(() => {
+    if (!ordersArray.length) return [] as { code: string; reason?: string; count: number }[];
+
+    const counts: Record<string, { code: string; reason?: string; count: number }> = {};
+    ordersArray.forEach((order) => {
+      order.errorItems?.forEach((err) => {
+        const key = err.errorCode || err.reason || "UNKNOWN";
+        if (!counts[key]) {
+          counts[key] = {
+            code: err.errorCode || key,
+            reason: err.reason,
+            count: 0,
+          };
+        }
+        counts[key].count += 1;
+      });
+    });
+
+    return Object.values(counts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+  }, [ordersArray]);
+
   const handlePollNow = async () => {
     setLoading(true);
     try {
       await api.post("/orders/poll-now");
-      pushToast("Order polling triggered successfully", "success");
+      pushToast(t("orderPollingTriggered") || "Order polling triggered", "success");
       refreshOrders();
-    } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to trigger polling", "error");
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t("orderPollingFailed") || "Failed to trigger polling", "error");
     } finally {
       setLoading(false);
     }
@@ -122,10 +154,10 @@ export default function OrdersPage() {
     setLoading(true);
     try {
       await api.post(`/orders/retry/${orderId}`);
-      pushToast("Order retry initiated", "success");
+      pushToast(t("orderRetryQueued") || "Order retry initiated", "success");
       refreshOrders();
-    } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to retry order", "error");
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t("orderRetryFailed") || "Failed to retry order", "error");
     } finally {
       setLoading(false);
     }
@@ -135,10 +167,10 @@ export default function OrdersPage() {
     setLoading(true);
     try {
       await api.post(`/orders/manual/${orderId}`);
-      pushToast("Order marked as manually processed", "success");
+      pushToast(t("orderMarkedManual") || "Order marked as manual", "success");
       refreshOrders();
-    } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to mark order", "error");
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t("orderManualFailed") || "Failed to mark order", "error");
     } finally {
       setLoading(false);
     }
@@ -146,42 +178,34 @@ export default function OrdersPage() {
 
   const handleBulkRetry = async () => {
     if (selectedOrders.size === 0) return;
-    
+
     setLoading(true);
     try {
-      // Retry all selected orders in parallel
-      await Promise.all(
-        Array.from(selectedOrders).map(id => api.post(`/orders/retry/${id}`))
-      );
-      pushToast(`✅ ${selectedOrders.size} orders queued for retry`, "success");
+      await Promise.all(Array.from(selectedOrders).map((id) => api.post(`/orders/retry/${id}`)));
+      pushToast(`✅ ${selectedOrders.size} ${t("ordersQueuedForRetry") || "orders queued for retry"}`, "success");
       setSelectedOrders(new Set());
       refreshOrders();
-    } catch (error: any) {
-      pushToast(error.response?.data?.error || "Some retries failed", "error");
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t("orderBulkRetryFailed") || "Some retries failed", "error");
     } finally {
       setLoading(false);
     }
   };
 
   const toggleOrderSelection = (orderId: string) => {
-    const newSet = new Set(selectedOrders);
-    if (newSet.has(orderId)) {
-      newSet.delete(orderId);
-    } else {
-      newSet.add(orderId);
-    }
-    setSelectedOrders(newSet);
-  };
-
-  const selectAllVisible = () => {
-    if (selectedOrders.size === filteredOrders.length) {
-      setSelectedOrders(new Set());
-    } else {
-      setSelectedOrders(new Set(filteredOrders.map(o => o.id)));
-    }
+    setSelectedOrders((prev) => {
+      const next = new Set(prev);
+      if (next.has(orderId)) {
+        next.delete(orderId);
+      } else {
+        next.add(orderId);
+      }
+      return next;
+    });
   };
 
   const handleExportCSV = async () => {
+    if (typeof window === "undefined") return;
     try {
       const response = await api.get("/orders/processed/export", { responseType: "blob" });
       const url = window.URL.createObjectURL(new Blob([response.data]));
@@ -191,420 +215,572 @@ export default function OrdersPage() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      pushToast("Orders exported successfully", "success");
-    } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to export orders", "error");
+      pushToast(t("ordersExported") || "Orders exported", "success");
+    } catch (err: any) {
+      pushToast(err.response?.data?.error || t("ordersExportFailed") || "Failed to export orders", "error");
     }
   };
+
+  const handleManualRefresh = () => {
+    refreshOrders();
+    pushToast(t("ordersRefreshing") || "Refreshing orders");
+  };
+
+  const handleToggleAutoRefresh = () => {
+    setAutoRefresh((prev) => !prev);
+    pushToast(!autoRefresh ? t("autoRefreshEnabled") || "Auto-refresh enabled" : t("autoRefreshDisabled") || "Auto-refresh paused");
+  };
+
+  const handleReplayTour = () => {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem("tour_completed_orders");
+    setShowTour(true);
+    window.location.reload();
+  };
+
+  const selectionCount = selectedOrders.size;
+  const allVisibleSelected = filteredOrders.length > 0 && selectionCount === filteredOrders.length;
+
+  const tableRows = filteredOrders.map((order) => ({
+    _id: order.id,
+    _order: order,
+    shopeeOrder: (
+      <div>
+        <div style={{ fontWeight: 600 }}>{order.shopeeOrderSn}</div>
+        <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+          {order.itemCount ? `${order.itemCount} ${t("items") || "items"}` : ""}
+          {order.itemCount && order.totalAmount ? " · " : ""}
+          {order.totalAmount ? `₱${order.totalAmount.toLocaleString()}` : ""}
+        </div>
+      </div>
+    ),
+    amazonOrder: order.amazonOrder?.amazonOrderId ? (
+      <div style={{ fontSize: 13 }}>
+        <code>{order.amazonOrder.amazonOrderId}</code>
+        {order.amazonOrder?.trackingNumber && (
+          <div style={{ marginTop: 4, color: "var(--color-text-muted)" }}>
+            {order.amazonOrder.trackingNumber}
+          </div>
+        )}
+      </div>
+    ) : (
+      <span style={{ color: "var(--color-text-muted)" }}>—</span>
+    ),
+    status: getStatusBadge(order.processingStatus),
+    mode: order.processingMode ? <Badge variant="info">{order.processingMode}</Badge> : <span style={{ color: "var(--color-text-muted)" }}>—</span>,
+    errors: order.errorItems.length > 0 ? <Badge variant="error">{order.errorItems.length}</Badge> : <span style={{ color: "var(--color-text-muted)" }}>0</span>,
+    date: (
+      <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+        {new Date(order.updatedAt).toLocaleString()}
+      </span>
+    ),
+    actions: (
+      <div style={{ display: "flex", gap: 8 }}>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            setSelectedOrder(order);
+            setShowDetailModal(true);
+          }}
+        >
+          {t("view") || "View"}
+        </Button>
+        {order.processingStatus === "FAILED" && (
+          <Button
+            variant="warning"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRetryOrder(order.id);
+            }}
+            disabled={loading}
+          >
+            {t("retry") || "Retry"}
+          </Button>
+        )}
+        {!order.amazonOrder && (
+          <Button
+            variant="success"
+            size="sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleManualMark(order.id);
+            }}
+            disabled={loading}
+          >
+            {t("manual") || "Manual"}
+          </Button>
+        )}
+      </div>
+    ),
+  }));
+
+  const orderColumns = [
+    { key: "shopeeOrder", header: t("shopeeOrder") || "Shopee Order" },
+    { key: "amazonOrder", header: t("amazonOrder") || "Amazon Order", width: "200px" },
+    { key: "status", header: t("status") || "Status", width: "140px" },
+    { key: "mode", header: t("mode") || "Mode", width: "120px" },
+    { key: "errors", header: t("errors") || "Errors", width: "90px", align: "center" as const },
+    { key: "date", header: t("updatedAt") || "Updated", width: "170px" },
+    { key: "actions", header: t("actions") || "Actions", width: "220px" },
+  ];
+
+  const heroBadge = (
+    <Badge variant={autoRefresh ? "success" : "warning"}>
+      {autoRefresh ? t("liveAutoRefresh") || "Live auto-refresh" : t("manualMode") || "Manual refresh"}
+    </Badge>
+  );
+
+  const heroHighlights = [
+    {
+      label: t("processedToday") || "Processed today",
+      value: stats.todayProcessed.toLocaleString(),
+      helper: t("ordersProcessedTodayHelper") || "Synced within the last 24h",
+    },
+    {
+      label: t("pending") || "Pending",
+      value: stats.pending.toLocaleString(),
+      helper: t("ordersAwaitingAction") || "Awaiting automation",
+    },
+    {
+      label: t("failed") || "Failed",
+      value: stats.failed.toLocaleString(),
+      helper: t("ordersNeedReview") || "Needs manual review",
+    },
+  ];
+
+  const heroAside = (
+    <div style={{ display: "grid", gap: 12 }}>
+      {heroHighlights.map((stat) => (
+        <div
+          key={stat.label}
+          style={{
+            padding: 14,
+            borderRadius: "var(--radius-md)",
+            background: "rgba(255,255,255,0.15)",
+            border: "1px solid rgba(255,255,255,0.3)",
+          }}
+        >
+          <span style={{ fontSize: 13, color: "rgba(255,255,255,0.8)" }}>{stat.label}</span>
+          <div style={{ fontSize: 26, fontWeight: 800 }}>{stat.value}</div>
+          <p style={{ margin: 0, color: "rgba(255,255,255,0.75)", fontSize: 13 }}>{stat.helper}</p>
+        </div>
+      ))}
+    </div>
+  );
+
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {stats.todayProcessed > 0
+        ? `${stats.todayProcessed} ${t("ordersProcessedToday") || "orders processed today"}.`
+        : t("ordersHeroFooter") || "Live analytics refresh every 30 seconds when enabled."}
+    </span>
+  );
+
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+      <Input
+        placeholder={t("searchByOrderID") || "Search orders"}
+        value={searchTerm}
+        onChange={(e) => setSearchTerm(e.target.value)}
+        aria-label={t("search") || "Search"}
+        style={{ flex: "1 1 220px", minWidth: 200 }}
+      />
+      <Select
+        value={statusFilter}
+        onChange={(e) => setStatusFilter(e.target.value)}
+        options={[
+          { value: "all", label: t("allOrders") || "All orders" },
+          { value: "fulfilled", label: t("fulfilled") || "Fulfilled" },
+          { value: "failed", label: t("failed") || "Failed" },
+          { value: "pending", label: t("pending") || "Pending" },
+        ]}
+        style={{ flex: "0 0 200px", minWidth: 180 }}
+      />
+      <Button type="button" variant="ghost" onClick={() => { setStatusFilter("all"); setSearchTerm(""); }}>
+        🧼 {t("clearFilters") || "Clear filters"}
+      </Button>
+    </div>
+  );
+
+  const actions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={handlePollNow} disabled={loading}>
+        🔄 {t("pollNow") || "Poll now"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleManualRefresh}>
+        ♻️ {t("refreshData") || "Refresh"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleExportCSV}>
+        📊 {t("exportCsv") || "Export CSV"}
+      </Button>
+      <Button type="button" variant={autoRefresh ? "primary" : "ghost"} onClick={handleToggleAutoRefresh}>
+        {autoRefresh ? `⚡ ${t("live") || "Live"}` : `⏸️ ${t("paused") || "Paused"}`}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleBulkRetry} disabled={selectedOrders.size === 0 || loading}>
+        🔁 {t("retrySelected") || "Retry selected"}
+      </Button>
+    </div>
+  );
+
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader title={t("fulfillmentHealth") || "Fulfillment health"} subtitle={t("ordersHealthSubtitle") || "Live status"} icon="🩺" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[
+            { label: t("fulfilled") || "Fulfilled", value: stats.fulfilled, variant: "success" },
+            { label: t("failed") || "Failed", value: stats.failed, variant: "error" },
+            { label: t("pending") || "Pending", value: stats.pending, variant: "warning" },
+          ].map((item) => (
+            <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{item.label}</span>
+              <Badge variant={item.variant as any}>{item.value.toLocaleString()}</Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
+      {errorInsights.length > 0 && (
+        <Card hover={false}>
+          <CardHeader
+            title={t("topFailureReasons") || "Top failure reasons"}
+            subtitle={t("topFailureReasonsSubtitle") || "Most common blockers in the queue"}
+            icon="🚨"
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {errorInsights.map((insight) => (
+              <div
+                key={`${insight.code}-${insight.reason || "unknown"}`}
+                style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  padding: "10px 12px",
+                  borderRadius: "var(--radius-md)",
+                  background: "var(--color-elevated)",
+                  border: "1px solid var(--color-border)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <Badge variant="error">{insight.code}</Badge>
+                  <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                    × {insight.count.toLocaleString()}
+                  </span>
+                </div>
+                <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>
+                  {insight.reason || t("noDetailsAvailable") || "Details unavailable"}
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+      <Card hover={false}>
+        <CardHeader title={t("orderShortcuts") || "Shortcuts"} subtitle={t("orderShortcutsSubtitle") || "Daily workflows"} icon="⚙️" />
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          <Button type="button" variant="ghost" onClick={() => window.open("/analytics", "_self")}>
+            📈 {t("viewAnalytics") || "View analytics"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => window.open("/crm", "_self")}>
+            👥 {t("viewCustomers") || "View customers"}
+          </Button>
+          <Button type="button" variant="ghost" onClick={() => window.open("mailto:support@automation?subject=Order%20assist", "_blank")}>
+            ✉️ {t("contactSupport") || "Contact support"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
 
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "FULFILLED":
-        return <Badge variant="success">Fulfilled</Badge>;
+        return <Badge variant="success">{t("fulfilled") || "Fulfilled"}</Badge>;
       case "FAILED":
       case "SKIPPED":
-        return <Badge variant="error">Failed</Badge>;
+        return <Badge variant="error">{t("failed") || "Failed"}</Badge>;
       case "PROCESSING":
-        return <Badge variant="warning">Processing</Badge>;
+        return <Badge variant="warning">{t("processing") || "Processing"}</Badge>;
       case "QUEUED":
-        return <Badge variant="info">Queued</Badge>;
+        return <Badge variant="info">{t("queued") || "Queued"}</Badge>;
       default:
         return <Badge variant="default">{status}</Badge>;
     }
   };
 
   return (
-    <div className="shell">
-      <AppNav activeHref="/orders" />
-      <div className="container">
-        {/* Hero Section */}
-        <div style={{
-          background: "linear-gradient(135deg, #f093fb 0%, #f5576c 100%)",
-          padding: "48px 32px",
-          borderRadius: "var(--radius-xl)",
-          marginBottom: 32,
-          boxShadow: "var(--shadow-lg)"
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
+    <>
+      <PageLayout
+        activeHref="/orders"
+        title="📦 Order Management"
+        description={t("ordersHeroDescription") || "Track, process, and manage orders across platforms."}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        toolbar={toolbar}
+        actions={actions}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, #f093fb 0%, #f5576c 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {isLoading && <LoadingSpinner text={t("loadingOrders") || "Loading orders"} />}
+
+          {error && (
+            <Alert variant="error" title={t("failedToLoadOrders") || "Failed to load orders"}>
+              {t("tryRefreshing") || "Please try refreshing the page."}
+            </Alert>
+          )}
+
+          {!isLoading && !error && (
+            <>
+              <Card>
+                <CardHeader
+                  title={t("operationsPulse") || "Operations pulse"}
+                  subtitle={t("ordersPulseSubtitle") || "Snapshot of current workload"}
+                  icon="📋"
+                />
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 16,
+                    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                  }}
+                >
+                  <StatCard icon="📦" label={t("totalOrders") || "Total"} value={stats.total.toLocaleString()} color="primary" />
+                  <StatCard icon="✅" label={t("fulfilled") || "Fulfilled"} value={stats.fulfilled.toLocaleString()} color="success" />
+                  <StatCard icon="⚠️" label={t("failed") || "Failed"} value={stats.failed.toLocaleString()} color="error" />
+                  <StatCard icon="⏳" label={t("pending") || "Pending"} value={stats.pending.toLocaleString()} color="warning" />
+                </div>
+              </Card>
+
+              <Card>
+                <CardHeader title={t("filters") || "Filters"} icon="🔍" />
+                <div className="grid grid-2" style={{ gap: 16 }}>
+                  <Input
+                    label={t("searchByOrderID") || "Search orders"}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    placeholder={t("searchByOrderID") || "Search by Shopee or Amazon ID"}
+                  />
+                  <Select
+                    label={t("status") || "Status"}
+                    value={statusFilter}
+                    onChange={(e) => setStatusFilter(e.target.value)}
+                    options={[
+                      { value: "all", label: t("allOrders") || "All" },
+                      { value: "fulfilled", label: t("fulfilled") || "Fulfilled" },
+                      { value: "failed", label: t("failed") || "Failed" },
+                      { value: "pending", label: t("pending") || "Pending" },
+                    ]}
+                  />
+                </div>
+                <div style={{ display: "flex", gap: 12, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+                  <Button type="button" variant="ghost" onClick={() => { setStatusFilter("all"); setSearchTerm(""); }}>
+                    🧼 {t("clearFilters") || "Clear filters"}
+                  </Button>
+                  {selectionCount > 0 && (
+                    <>
+                      <span style={{ fontSize: 14, color: "var(--color-text-muted)" }}>
+                        {selectionCount} {t("ordersSelected") || "selected"}
+                      </span>
+                      <Button type="button" size="sm" onClick={handleBulkRetry} disabled={loading}>
+                        🔁 {t("retrySelected") || "Retry selected"}
+                      </Button>
+                      <Button type="button" size="sm" variant="ghost" onClick={() => setSelectedOrders(new Set())}>
+                        {t("clearSelection") || "Clear selection"}
+                      </Button>
+                    </>
+                  )}
+                  {filteredOrders.length > 0 && (
+                    <label style={{ fontSize: 13, color: "var(--color-text-muted)", display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={allVisibleSelected}
+                        onChange={() => {
+                          if (allVisibleSelected) {
+                            setSelectedOrders(new Set());
+                          } else {
+                            setSelectedOrders(new Set(filteredOrders.map((order) => order.id)));
+                          }
+                        }}
+                      />
+                      {allVisibleSelected ? t("deselectVisible") || "Deselect visible" : t("selectVisible") || "Select visible"}
+                    </label>
+                  )}
+                </div>
+              </Card>
+
+              {filteredOrders.length > 0 ? (
+                <Card>
+                  <CardHeader
+                    title={t("ordersTableTitle") || "Order queue"}
+                    subtitle={`${filteredOrders.length} ${t("orders") || "orders"}`}
+                    icon="🗂️"
+                  />
+                  <Table
+                    columns={orderColumns}
+                    data={tableRows}
+                    selectedRows={selectedOrders}
+                    onSelectRow={toggleOrderSelection}
+                    idKey="_id"
+                    emptyMessage={t("noOrdersFound") || "No orders found"}
+                    onRowClick={(row) => {
+                      setSelectedOrder(row._order);
+                      setShowDetailModal(true);
+                    }}
+                  />
+                </Card>
+              ) : (
+                <EmptyState
+                  icon="📦"
+                  title={t("noOrdersFound") || "No orders found"}
+                  description={t("descriptionAdjustFilters") || "Try adjusting filters or pulling new data."}
+                  action={
+                    <Button type="button" onClick={handleManualRefresh} variant="ghost">
+                      ♻️ {t("refreshData") || "Refresh"}
+                    </Button>
+                  }
+                />
+              )}
+            </>
+          )}
+        </div>
+      </PageLayout>
+
+      {selectedOrder && (
+        <Modal
+          isOpen={showDetailModal}
+          onClose={() => {
+            setShowDetailModal(false);
+            setSelectedOrder(null);
+          }}
+          title={`${t("order")} · ${selectedOrder.shopeeOrderSn}`}
+          size="lg"
+        >
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
             <div>
-              <h1 style={{ fontSize: 36, margin: 0, color: "#fff" }}>
-                📦 Order Management
-              </h1>
-              <p style={{ color: "rgba(255,255,255,0.9)", marginTop: 8, fontSize: 16 }}>
-                Track, process, and manage all orders across platforms
-              </p>
+              <h4 style={{ marginTop: 0, marginBottom: 12 }}>{t("orderInformation") || "Order information"}</h4>
+              <div className="grid grid-2" style={{ gap: 16 }}>
+                <div>
+                  <label className="label">Shopee Order SN</label>
+                  <div style={{ fontSize: 14 }}>
+                    <code>{selectedOrder.shopeeOrderSn}</code>
+                  </div>
+                </div>
+                <div>
+                  <label className="label">Amazon Order ID</label>
+                  <div style={{ fontSize: 14 }}>
+                    {selectedOrder.amazonOrder?.amazonOrderId ? (
+                      <code>{selectedOrder.amazonOrder.amazonOrderId}</code>
+                    ) : (
+                      <span style={{ color: "var(--color-text-muted)" }}>—</span>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <label className="label">{t("status") || "Status"}</label>
+                  <div>{getStatusBadge(selectedOrder.processingStatus)}</div>
+                </div>
+                <div>
+                  <label className="label">{t("processingMode") || "Processing mode"}</label>
+                  <div style={{ fontSize: 14 }}>
+                    {selectedOrder.processingMode || <span style={{ color: "var(--color-text-muted)" }}>—</span>}
+                  </div>
+                </div>
+                <div>
+                  <label className="label">{t("createdAt") || "Created"}</label>
+                  <div style={{ fontSize: 14 }}>{new Date(selectedOrder.createdAt).toLocaleString()}</div>
+                </div>
+                <div>
+                  <label className="label">{t("updatedAt") || "Updated"}</label>
+                  <div style={{ fontSize: 14 }}>{new Date(selectedOrder.updatedAt).toLocaleString()}</div>
+                </div>
+              </div>
             </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <Button onClick={handlePollNow} disabled={loading} variant="ghost">
-                🔄 Poll Now
-              </Button>
-              <Button onClick={handleExportCSV} variant="ghost">
-                📊 Export CSV
-              </Button>
-              <Button 
-                onClick={() => setAutoRefresh(!autoRefresh)} 
-                variant={autoRefresh ? "primary" : "ghost"}
-                title={autoRefresh ? t("autoRefreshEnabled") : t("autoRefreshDisabled")}
-              >
-                {autoRefresh ? `⚡ ${t("live")}` : `⏸️ ${t("paused")}`}
+
+            {selectedOrder.errorItems.length > 0 && (
+              <div>
+                <h4 style={{ marginTop: 0, marginBottom: 12 }}>
+                  {t("errors") || "Errors"} ({selectedOrder.errorItems.length})
+                </h4>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  {selectedOrder.errorItems.map((err, idx) => (
+                    <div
+                      key={`${err.errorCode}-${idx}`}
+                      style={{
+                        padding: 16,
+                        background: "var(--color-elevated)",
+                        borderRadius: "var(--radius-md)",
+                        border: "1px solid var(--color-error)",
+                      }}
+                    >
+                      <Badge variant="error">{err.errorCode}</Badge>
+                      <p style={{ margin: "8px 0", fontSize: 14 }}>{err.reason}</p>
+                      {err.amazonProductUrl && (
+                        <a
+                          href={err.amazonProductUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{ fontSize: 13, color: "var(--color-primary)" }}
+                        >
+                          {t("viewProduct") || "View product"} →
+                        </a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              {selectedOrder.processingStatus === "FAILED" && (
+                <Button
+                  onClick={() => {
+                    handleRetryOrder(selectedOrder.id);
+                    setShowDetailModal(false);
+                  }}
+                  variant="warning"
+                  fullWidth
+                  disabled={loading}
+                >
+                  🔄 {t("retryOrder") || "Retry order"}
+                </Button>
+              )}
+              {!selectedOrder.amazonOrder && (
+                <Button
+                  onClick={() => {
+                    handleManualMark(selectedOrder.id);
+                    setShowDetailModal(false);
+                  }}
+                  variant="success"
+                  fullWidth
+                  disabled={loading}
+                >
+                  ✅ {t("markManual") || "Mark as manual"}
+                </Button>
+              )}
+              <Button onClick={() => setShowDetailModal(false)} variant="ghost" fullWidth>
+                {t("close") || "Close"}
               </Button>
             </div>
           </div>
-        </div>
+        </Modal>
+      )}
 
-        {isLoading && <LoadingSpinner />}
+      <Toast />
 
-        {error && (
-          <Alert variant="error">
-            <strong>Failed to load orders</strong>
-            <p style={{ marginTop: 4 }}>Please try refreshing the page</p>
-          </Alert>
-        )}
-
-        {!isLoading && !error && (
-          <>
-            {/* Stats Overview */}
-            <div className="grid grid-4" style={{ marginBottom: 24 }}>
-              <StatCard
-                icon="📦"
-                label="Total Orders"
-                value={stats.total.toLocaleString()}
-                color="primary"
-              />
-              <StatCard
-                icon="✅"
-                label="Fulfilled"
-                value={stats.fulfilled.toLocaleString()}
-                color="success"
-              />
-              <StatCard
-                icon="⚠️"
-                label="Failed"
-                value={stats.failed.toLocaleString()}
-                color="error"
-              />
-              <StatCard
-                icon="⏳"
-                label="Pending"
-                value={stats.pending.toLocaleString()}
-                color="warning"
-              />
-            </div>
-
-            {/* Filters and Actions */}
-            <div style={{ marginBottom: 24 }}>
-              <Card>
-              <div className="grid grid-2" style={{ gap: 16, marginBottom: 16 }}>
-                <Input
-                  label="Search Orders"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder={t("searchByOrderID")}
-                />
-                <Select
-                  label="Filter by Status"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  options={[
-                    { value: "all", label: "All Orders" },
-                    { value: "fulfilled", label: "✅ Fulfilled" },
-                    { value: "failed", label: "⚠️ Failed" },
-                    { value: "pending", label: "⏳ Pending" }
-                  ]}
-                />
-              </div>
-              {selectedOrders.size > 0 && (
-                <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
-                  <span style={{ fontSize: 14, color: "var(--color-text-muted)" }}>
-                    {selectedOrders.size} order(s) selected
-                  </span>
-                  <Button onClick={handleBulkRetry} variant="primary" size="sm" disabled={loading}>
-                    🔄 Retry Selected
-                  </Button>
-                  <Button onClick={() => setSelectedOrders(new Set())} variant="ghost" size="sm">
-                    Clear Selection
-                  </Button>
-                </div>
-              )}  
-            </Card>
-            </div>
-
-            {/* Orders Table */}
-            {filteredOrders.length > 0 ? (
-              <Card>
-                <CardHeader 
-                  title="📋 Order List" 
-                  subtitle={`${filteredOrders.length} orders`} 
-                />
-                <Table
-                  columns={[
-                    { 
-                      key: "select", 
-                      header: "", 
-                      width: "50px",
-                      render: (row: any) => (
-                        <input
-                          type="checkbox"
-                          checked={selectedOrders.has(row._order.id)}
-                          onChange={(e) => {
-                            const newSet = new Set(selectedOrders);
-                            if (e.target.checked) {
-                              newSet.add(row._order.id);
-                            } else {
-                              newSet.delete(row._order.id);
-                            }
-                            setSelectedOrders(newSet);
-                          }}
-                        />
-                      )
-                    },
-                    { key: "shopeeOrder", header: "Shopee Order" },
-                    { key: "amazonOrder", header: "Amazon Order", width: "180px" },
-                    { key: "status", header: "Status", width: "120px" },
-                    { key: "mode", header: "Mode", width: "100px" },
-                    { key: "errors", header: "Errors", width: "80px" },
-                    { key: "date", header: "Updated", width: "130px" },
-                    { key: "actions", header: "Actions", width: "220px" }
-                  ]}
-                  data={filteredOrders.map((order, index) => ({
-                    _order: order,
-                    select: null,
-                    shopeeOrder: (
-                      <div>
-                        <div style={{ fontWeight: 600, fontSize: 14 }}>
-                          {order.shopeeOrderSn}
-                        </div>
-                      </div>
-                    ),
-                    amazonOrder: order.amazonOrder?.amazonOrderId ? (
-                      <div style={{ fontSize: 13 }}>
-                        <code>{order.amazonOrder.amazonOrderId}</code>
-                      </div>
-                    ) : (
-                      <span style={{ color: "var(--color-text-muted)", fontSize: 13 }}>—</span>
-                    ),
-                    status: getStatusBadge(order.processingStatus),
-                    mode: order.processingMode ? (
-                      <Badge variant="info">{order.processingMode}</Badge>
-                    ) : (
-                      <span style={{ color: "var(--color-text-muted)" }}>—</span>
-                    ),
-                    errors: order.errorItems.length > 0 ? (
-                      <Badge variant="error">{order.errorItems.length}</Badge>
-                    ) : (
-                      <span style={{ color: "var(--color-text-muted)" }}>0</span>
-                    ),
-                    date: (
-                      <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-                        {new Date(order.updatedAt).toLocaleDateString()}
-                      </span>
-                    ),
-                    actions: (
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => {
-                            setSelectedOrder(order);
-                            setShowDetailModal(true);
-                          }}
-                        >
-                          View
-                        </Button>
-                        {order.processingStatus === "FAILED" && (
-                          <Button
-                            variant="warning"
-                            size="sm"
-                            onClick={() => handleRetryOrder(order.id)}
-                            disabled={loading}
-                          >
-                            Retry
-                          </Button>
-                        )}
-                        {!order.amazonOrder && (
-                          <Button
-                            variant="success"
-                            size="sm"
-                            onClick={() => handleManualMark(order.id)}
-                            disabled={loading}
-                          >
-                            Manual
-                          </Button>
-                        )}
-                      </div>
-                    )
-                  }))}
-                  onRowClick={(row: any) => {
-                    setSelectedOrder(row._order);
-                    setShowDetailModal(true);
-                  }}
-                />
-              </Card>
-            ) : (
-              <EmptyState
-                icon="📦"
-                title={t("noOrdersFound")}
-                description={t("descriptionAdjustFilters")}
-              />
-            )}
-          </>
-        )}
-
-        {/* Order Detail Modal */}
-        {selectedOrder && (
-          <Modal
-            isOpen={showDetailModal}
-            onClose={() => {
-              setShowDetailModal(false);
-              setSelectedOrder(null);
-            }}
-            title={`Order: ${selectedOrder.shopeeOrderSn}`}
-            size="lg"
-          >
-            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-              {/* Order Info */}
-              <div>
-                <h4 style={{ marginTop: 0, marginBottom: 12 }}>Order Information</h4>
-                <div className="grid grid-2" style={{ gap: 16 }}>
-                  <div>
-                    <label className="label">Shopee Order SN</label>
-                    <div style={{ fontSize: 14 }}>
-                      <code>{selectedOrder.shopeeOrderSn}</code>
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Amazon Order ID</label>
-                    <div style={{ fontSize: 14 }}>
-                      {selectedOrder.amazonOrder?.amazonOrderId ? (
-                        <code>{selectedOrder.amazonOrder.amazonOrderId}</code>
-                      ) : (
-                        <span style={{ color: "var(--color-text-muted)" }}>Not available</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Status</label>
-                    <div>{getStatusBadge(selectedOrder.processingStatus)}</div>
-                  </div>
-                  <div>
-                    <label className="label">Processing Mode</label>
-                    <div style={{ fontSize: 14 }}>
-                      {selectedOrder.processingMode || <span style={{ color: "var(--color-text-muted)" }}>—</span>}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">{t("createdAt")}</label>
-                    <div style={{ fontSize: 14 }}>
-                      {new Date(selectedOrder.createdAt).toLocaleString()}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="label">Updated At</label>
-                    <div style={{ fontSize: 14 }}>
-                      {new Date(selectedOrder.updatedAt).toLocaleString()}
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Errors */}
-              {selectedOrder.errorItems.length > 0 && (
-                <div>
-                  <h4 style={{ marginTop: 0, marginBottom: 12 }}>Errors ({selectedOrder.errorItems.length})</h4>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                    {selectedOrder.errorItems.map((error, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: 16,
-                          background: "var(--color-elevated)",
-                          borderRadius: "var(--radius-md)",
-                          border: "1px solid var(--color-error)"
-                        }}
-                      >
-                        <div style={{ display: "flex", alignItems: "start", gap: 8, marginBottom: 8 }}>
-                          <Badge variant="error">{error.errorCode}</Badge>
-                        </div>
-                        <p style={{ margin: 0, fontSize: 14 }}>{error.reason}</p>
-                        {error.amazonProductUrl && (
-                          <a
-                            href={error.amazonProductUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            style={{ fontSize: 13, color: "var(--color-primary)", marginTop: 8, display: "inline-block" }}
-                          >
-                            View Product →
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Actions */}
-              <div style={{ display: "flex", gap: 12 }}>
-                {selectedOrder.processingStatus === "FAILED" && (
-                  <Button
-                    onClick={() => {
-                      handleRetryOrder(selectedOrder.id);
-                      setShowDetailModal(false);
-                    }}
-                    variant="warning"
-                    fullWidth
-                    disabled={loading}
-                  >
-                    🔄 Retry Order
-                  </Button>
-                )}
-                {!selectedOrder.amazonOrder && (
-                  <Button
-                    onClick={() => {
-                      handleManualMark(selectedOrder.id);
-                      setShowDetailModal(false);
-                    }}
-                    variant="success"
-                    fullWidth
-                    disabled={loading}
-                  >
-                    ✅ Mark as Manual
-                  </Button>
-                )}
-                <Button
-                  onClick={() => setShowDetailModal(false)}
-                  variant="ghost"
-                  fullWidth
-                >
-                  Close
-                </Button>
-              </div>
-            </div>
-          </Modal>
-        )}
-
-        <Toast />
-
-        <OnboardingTour 
-          pageName="orders" 
-          steps={ordersTour} 
-          onComplete={() => setShowTour(false)} 
-        />
-        {!showTour && <HelpButton onClick={() => {
-          if (typeof window !== 'undefined') {
-            localStorage.removeItem("tour_completed_orders");
-            setShowTour(true);
-            window.location.reload();
-          }
-        }} />}
-      </div>
-    </div>
+      <OnboardingTour pageName="orders" steps={ordersTour} onComplete={() => setShowTour(false)} />
+      {!showTour && <HelpButton onClick={handleReplayTour} />}
+    </>
   );
 }
 
 export async function getStaticProps({ locale }: { locale: string }) {
   return {
     props: {
-      ...(await serverSideTranslations(locale, ["common"]))
-    }
+      ...(await serverSideTranslations(locale, ["common"])),
+    },
   };
 }

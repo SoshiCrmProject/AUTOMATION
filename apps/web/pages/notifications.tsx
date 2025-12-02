@@ -1,12 +1,23 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
-import AppNav from "../components/AppNav";
-import { 
-  Card, CardHeader, StatCard, Button, Badge, Input, Table, 
-  Alert, LoadingSpinner, EmptyState, Modal, Select, Tabs
+import PageLayout from "../components/PageLayout";
+import {
+  Card,
+  CardHeader,
+  StatCard,
+  Button,
+  Badge,
+  Input,
+  Table,
+  Alert,
+  LoadingSpinner,
+  EmptyState,
+  Modal,
+  Select,
+  Tabs,
 } from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
 
@@ -66,6 +77,10 @@ export default function Notifications() {
     priority: "MEDIUM",
     template: ""
   });
+
+  const [channelFilter, setChannelFilter] = useState<string>("all");
+  const [ruleSearch, setRuleSearch] = useState<string>("");
+  const [historySearch, setHistorySearch] = useState<string>("");
   
   const { data: channels, mutate: refreshChannels } = useSWR<NotificationChannel[]>(
     shopId ? `/api/notifications/channels/${shopId}` : null,
@@ -203,6 +218,7 @@ export default function Notifications() {
   const channelsArray = Array.isArray(channels) ? channels : [];
   const rulesArray = Array.isArray(rules) ? rules : [];
   const historyArray = Array.isArray(history) ? history : [];
+  const isLoadingData = Boolean(shopId.trim()) && (!channels || !rules || !history);
 
   const stats = {
     totalChannels: channelsArray.length,
@@ -221,351 +237,490 @@ export default function Notifications() {
     }).length
   };
 
-  return (
-    <div className="shell">
-      <AppNav activeHref="/notifications" />
-      <Toast />
-      
-      <div className="container">
-        {/* Hero Section */}
-        <div style={{
-          background: 'linear-gradient(135deg, #f59e0b 0%, #ef4444 100%)',
-          padding: '48px 32px',
-          borderRadius: 'var(--radius-xl)',
-          marginBottom: 32,
-          boxShadow: 'var(--shadow-lg)'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '20px' }}>
-            <div>
-              <h1 style={{ fontSize: 36, margin: 0, color: '#fff' }}>
-                🔔 Notification Center
-              </h1>
-              <p style={{ color: 'rgba(255,255,255,0.9)', marginTop: 8, fontSize: 16 }}>
-                Multi-channel notifications, automation rules, and delivery tracking
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <Button onClick={() => setShowAddChannelModal(true)} disabled={!shopId} variant="ghost">
-                ➕ {t("addChannel")}
-              </Button>
-              <Button onClick={() => setShowAddRuleModal(true)} disabled={!shopId} variant="ghost">
-                ⚙️ {t("addRule")}
-              </Button>
-            </div>
-          </div>
+  const filteredChannels = useMemo(() => {
+    if (channelFilter === "all") return channelsArray;
+    return channelsArray.filter((channel) => channel.type === channelFilter);
+  }, [channelFilter, channelsArray]);
+
+  const filteredRules = useMemo(() => {
+    if (!ruleSearch.trim()) return rulesArray;
+    const term = ruleSearch.toLowerCase();
+    return rulesArray.filter((rule) => {
+      const channel = channelsArray.find((c) => c.id === rule.channelId);
+      return (
+        rule.name.toLowerCase().includes(term) ||
+        rule.event.toLowerCase().includes(term) ||
+        (channel?.name.toLowerCase().includes(term) ?? false)
+      );
+    });
+  }, [ruleSearch, rulesArray, channelsArray]);
+
+  const filteredHistory = useMemo(() => {
+    if (!historySearch.trim()) return historyArray;
+    const term = historySearch.toLowerCase();
+    return historyArray.filter((entry) =>
+      entry.subject.toLowerCase().includes(term) ||
+      entry.message.toLowerCase().includes(term) ||
+      entry.status.toLowerCase().includes(term)
+    );
+  }, [historySearch, historyArray]);
+
+  const recentFailures = useMemo(() => historyArray.filter((entry) => entry.status === "FAILED").slice(0, 3), [historyArray]);
+
+  const hasShopContext = Boolean(shopId.trim());
+
+  const heroBadge = (
+    <Badge variant={hasShopContext ? "success" : "warning"}>
+      {hasShopContext ? t("liveData") || "Live data" : t("awaitingShopId") || "Awaiting shop ID"}
+    </Badge>
+  );
+
+  const heroHighlights = [
+    { label: t("notificationsChannels") || "Channels", value: stats.totalChannels.toLocaleString(), helper: t("notificationsChannelsHelper") || "Configured endpoints" },
+    { label: t("notificationsRules") || "Rules", value: stats.totalRules.toLocaleString(), helper: t("notificationsRulesHelper") || "Automation recipes" },
+    { label: t("notificationsSentToday") || "Sent today", value: stats.sentToday.toLocaleString(), helper: t("notificationsSentHelper") || "24h deliveries" },
+  ];
+
+  const heroAside = (
+    <div style={{ display: "grid", gap: 12 }}>
+      {heroHighlights.map((stat) => (
+        <div
+          key={stat.label}
+          style={{
+            padding: 14,
+            borderRadius: "var(--radius-md)",
+            background: "rgba(255, 255, 255, 0.8)",
+            border: "1px solid rgba(148, 163, 184, 0.4)",
+          }}
+        >
+          <span style={{ fontSize: 13, color: "var(--color-text-muted)", textTransform: "uppercase" }}>{stat.label}</span>
+          <div style={{ fontSize: 26, fontWeight: 800, color: "var(--color-text)" }}>{stat.value}</div>
+          <p style={{ margin: 0, color: "var(--color-text-muted)", fontSize: 13 }}>{stat.helper}</p>
         </div>
+      ))}
+    </div>
+  );
 
-        {/* Shop ID Input */}
-        <div style={{ marginBottom: 24 }}>
-          <Card>
-            <Input
-              label="Shop ID"
-              value={shopId}
-              onChange={(e) => setShopId(e.target.value)}
-              placeholder={t("enterShopIDNotifications")}
-            />
-          </Card>
-        </div>
+  const heroFooter = (
+    <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
+      {t("notificationsHeroFooter") || "Provide a shop ID to synchronize rules and delivery logs."}
+    </span>
+  );
 
-        {!shopId && (
-          <Alert variant="info" title={t("getStarted")}>
-            Enter your Shop ID above to configure notification channels and rules
-          </Alert>
-        )}        {shopId && (
-          <>
-            {/* Stats Overview */}
-            <div className="grid grid-4" style={{ marginBottom: 24 }}>
-              <StatCard
-                icon="📡"
-                label="Total Channels"
-                value={stats.totalChannels.toString()}
-                color="primary"
-                trend={stats.activeChannels}
-              />
-              <StatCard
-                icon="⚙️"
-                label="Active Rules"
-                value={stats.activeRules.toString()}
-                color="info"
-              />
-              <StatCard
-                icon="📤"
-                label="Sent Today"
-                value={stats.sentToday.toString()}
-                color="success"
-              />
-              <StatCard
-                icon="⚠️"
-                label="Failed Today"
-                value={stats.failedToday.toString()}
-                color="error"
-              />
-            </div>
+  const handleRefreshAll = () => {
+    if (!hasShopContext) return;
+    refreshChannels();
+    refreshRules();
+    refreshHistory();
+    pushToast(t("notificationsRefreshing") || "Refreshing notification data");
+  };
 
-            {/* Tabs */}
-            <Card>
-              <Tabs
-                tabs={[
-                  {
-                    id: 'channels',
-                    label: 'Channels',
-                    icon: '📡',
-                    badge: channelsArray.length,
-                    content: (
-                      <div style={{ padding: '24px' }}>
-                        {channelsArray.length > 0 ? (
-                          <div className="grid grid-3" style={{ gap: '20px' }}>
-                            {channelsArray.map((channel) => (
-                              <div
-                                key={channel.id}
-                                style={{
-                                  padding: '24px',
-                                  background: 'var(--color-elevated)',
-                                  borderRadius: 'var(--radius-lg)',
-                                  border: `2px solid ${channel.isActive ? 'var(--color-success)' : 'var(--color-border)'}`,
-                                  transition: 'all 0.2s',
-                                  opacity: channel.isActive ? 1 : 0.7
-                                }}
-                              >
-                                <div style={{ display: 'flex', alignItems: 'start', justifyContent: 'space-between', marginBottom: '16px' }}>
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                                    <span style={{ fontSize: '32px' }}>{getChannelIcon(channel.type)}</span>
-                                    <div>
-                                      <h4 style={{ margin: 0, fontSize: '16px' }}>{channel.name}</h4>
-                                      <p style={{ fontSize: '13px', color: 'var(--color-text-muted)', margin: '4px 0 0' }}>
-                                        {channel.type}
-                                      </p>
-                                    </div>
-                                  </div>
-                                  <Badge variant={channel.isActive ? 'success' : 'error'}>
-                                    {channel.isActive ? 'Active' : 'Inactive'}
-                                  </Badge>
-                                </div>
-                                
-                                <div style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginBottom: '16px' }}>
-                                  Created: {new Date(channel.createdAt).toLocaleDateString()}
-                                </div>
-
-                                <div style={{ display: 'flex', gap: '8px' }}>
-                                  <Button
-                                    variant="primary"
-                                    size="sm"
-                                    onClick={() => testChannel(channel.id)}
-                                    disabled={!channel.isActive}
-                                    fullWidth
-                                  >
-                                    Test
-                                  </Button>
-                                  <Button
-                                    variant={channel.isActive ? 'warning' : 'success'}
-                                    size="sm"
-                                    onClick={() => toggleChannel(channel.id, !channel.isActive)}
-                                    fullWidth
-                                  >
-                                    {channel.isActive ? 'Disable' : 'Enable'}
-                                  </Button>
-                                  <Button
-                                    variant="danger"
-                                    size="sm"
-                                    onClick={() => deleteChannel(channel.id)}
-                                  >
-                                    🗑️
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <EmptyState
-                            icon="📡"
-                            title={t("noChannelsConfigured")}
-                            description={t("descriptionAddFirstChannel")}
-                            action={
-                              <Button onClick={() => setShowAddChannelModal(true)}>
-                                ➕ Add Channel
-                              </Button>
-                            }
-                          />
-                        )}
-                      </div>
-                    )
-                  },
-                  {
-                    id: 'rules',
-                    label: 'Rules',
-                    icon: '⚙️',
-                    badge: rulesArray.length,
-                    content: (
-                      <div style={{ padding: '24px' }}>
-                        {rulesArray.length > 0 ? (
-                          <Table
-                            columns={[
-                              { key: 'name', header: 'Rule Name' },
-                              { key: 'event', header: 'Event', width: '150px' },
-                              { 
-                                key: 'channel', 
-                                header: 'Channel',
-                                width: '150px',
-                                render: (row: any) => {
-                                  const channel = channelsArray.find(c => c.id === row.channelId);
-                                  return channel ? (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span>{getChannelIcon(channel.type)}</span>
-                                      <span style={{ fontSize: '13px' }}>{channel.name}</span>
-                                    </div>
-                                  ) : 'Unknown';
-                                }
-                              },
-                              { 
-                                key: 'priority', 
-                                header: 'Priority',
-                                width: '120px',
-                                render: (row: any) => (
-                                  <Badge variant={getPriorityColor(row.priority) as any}>
-                                    {row.priority}
-                                  </Badge>
-                                )
-                              },
-                              { 
-                                key: 'status', 
-                                header: 'Status',
-                                width: '100px',
-                                render: (row: any) => (
-                                  <Badge variant={row.isActive ? 'success' : 'error'}>
-                                    {row.isActive ? 'Active' : 'Inactive'}
-                                  </Badge>
-                                )
-                              },
-                              {
-                                key: 'actions',
-                                header: 'Actions',
-                                width: '120px',
-                                render: (row: any) => (
-                                  <Button
-                                    variant={row.isActive ? 'warning' : 'success'}
-                                    size="sm"
-                                    onClick={() => toggleRule(row.id, !row.isActive)}
-                                  >
-                                    {row.isActive ? 'Disable' : 'Enable'}
-                                  </Button>
-                                )
-                              }
-                            ]}
-                            data={rulesArray}
-                          />
-                        ) : (
-                          <EmptyState
-                            icon="⚙️"
-                            title={t("noNotificationRules")}
-                            description={t("descriptionCreateAutomationRules")}
-                            action={
-                              <Button onClick={() => setShowAddRuleModal(true)}>
-                                ⚙️ Add Rule
-                              </Button>
-                            }
-                          />
-                        )}
-                      </div>
-                    )
-                  },
-                  {
-                    id: 'history',
-                    label: 'History',
-                    icon: '📜',
-                    badge: historyArray.length,
-                    content: (
-                      <div style={{ padding: '24px' }}>
-                        {historyArray.length > 0 ? (
-                          <Table
-                            columns={[
-                              { 
-                                key: 'subject', 
-                                header: 'Subject',
-                                render: (row: any) => (
-                                  <div>
-                                    <div style={{ fontWeight: 600 }}>{row.subject}</div>
-                                    <div style={{ fontSize: '13px', color: 'var(--color-text-muted)', marginTop: '4px' }}>
-                                      {row.message.substring(0, 80)}...
-                                    </div>
-                                  </div>
-                                )
-                              },
-                              { 
-                                key: 'priority', 
-                                header: 'Priority',
-                                width: '100px',
-                                render: (row: any) => (
-                                  <Badge variant={getPriorityColor(row.priority) as any}>
-                                    {row.priority}
-                                  </Badge>
-                                )
-                              },
-                              { 
-                                key: 'status', 
-                                header: 'Status',
-                                width: '100px',
-                                render: (row: any) => (
-                                  <Badge variant={getStatusColor(row.status) as any}>
-                                    {row.status}
-                                  </Badge>
-                                )
-                              },
-                              { 
-                                key: 'channel', 
-                                header: 'Channel',
-                                width: '120px',
-                                render: (row: any) => {
-                                  const channel = channelsArray.find(c => c.id === row.channelId);
-                                  return (
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                                      <span>{getChannelIcon(channel?.type || 'UNKNOWN')}</span>
-                                      <span style={{ fontSize: '12px' }}>{channel?.type || 'Unknown'}</span>
-                                    </div>
-                                  );
-                                }
-                              },
-                              { 
-                                key: 'sentAt', 
-                                header: 'Sent At',
-                                width: '160px',
-                                render: (row: any) => (
-                                  <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
-                                    {new Date(row.sentAt).toLocaleString()}
-                                  </span>
-                                )
-                              },
-                              {
-                                key: 'error',
-                                header: 'Error',
-                                width: '80px',
-                                render: (row: any) => row.errorMessage ? (
-                                  <span 
-                                    style={{ fontSize: '12px', color: 'var(--color-error)', cursor: 'pointer' }}
-                                    title={row.errorMessage}
-                                  >
-                                    ⚠️ Error
-                                  </span>
-                                ) : null
-                              }
-                            ]}
-                            data={historyArray}
-                          />
-                        ) : (
-                          <EmptyState
-                            icon="📜"
-                            title={t("noNotificationHistory")}
-                            description={t("descriptionSentNotifications")}
-                          />
-                        )}
-                      </div>
-                    )
-                  }
-                ]}
-              />
-            </Card>
-          </>
-        )}
+  const toolbar = (
+    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
+      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          label={t("shopId") || "Shop ID"}
+          value={shopId}
+          onChange={(e) => setShopId(e.target.value)}
+          placeholder={t("enterShopIDNotifications") || "Enter Shop ID"}
+        />
       </div>
+      <Select
+        label={t("channelType") || "Channel type"}
+        value={channelFilter}
+        onChange={(e) => setChannelFilter(e.target.value)}
+        options={[
+          { value: "all", label: t("allChannels") || "All channels" },
+          { value: "EMAIL", label: "Email" },
+          { value: "SMS", label: "SMS" },
+          { value: "SLACK", label: "Slack" },
+          { value: "DISCORD", label: "Discord" },
+          { value: "WEBHOOK", label: "Webhook" },
+        ]}
+        style={{ minWidth: 180 }}
+      />
+      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          label={t("search") || "Search"}
+          placeholder={t("searchNotifications") || "Search rules or history"}
+          value={ruleSearch}
+          onChange={(e) => setRuleSearch(e.target.value)}
+        />
+      </div>
+      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          label={t("historySearch") || "History filter"}
+          placeholder={t("searchHistory") || "Filter delivery history"}
+          value={historySearch}
+          onChange={(e) => setHistorySearch(e.target.value)}
+        />
+      </div>
+    </div>
+  );
+
+  const actions = (
+    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+      <Button type="button" onClick={() => setShowAddChannelModal(true)} disabled={!hasShopContext}>
+        ➕ {t("addChannel") || "Add channel"}
+      </Button>
+      <Button type="button" onClick={() => setShowAddRuleModal(true)} disabled={!hasShopContext}>
+        ⚙️ {t("addRule") || "Add rule"}
+      </Button>
+      <Button type="button" variant="ghost" onClick={handleRefreshAll} disabled={!hasShopContext}>
+        ♻️ {t("refreshData") || "Refresh"}
+      </Button>
+      <Button
+        type="button"
+        variant="ghost"
+        onClick={() => {
+          setHistorySearch("");
+          setRuleSearch("");
+          setChannelFilter("all");
+        }}
+        disabled={!historySearch && !ruleSearch && channelFilter === "all"}
+      >
+        🧼 {t("clearFilters") || "Clear"}
+      </Button>
+    </div>
+  );
+
+  const sidebar = (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <Card hover={false}>
+        <CardHeader
+          title={t("notificationsHealth") || "Channel health"}
+          subtitle={t("notificationsHealthSubtitle") || "Live status"}
+          icon="🩺"
+        />
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {[{
+            label: t("activeChannels") || "Active channels",
+            value: `${stats.activeChannels}/${stats.totalChannels}`,
+            variant: "success" as const,
+          }, {
+            label: t("activeRules") || "Active rules",
+            value: `${stats.activeRules}/${stats.totalRules}`,
+            variant: "info" as const,
+          }, {
+            label: t("failedToday") || "Failures today",
+            value: stats.failedToday.toLocaleString(),
+            variant: stats.failedToday > 0 ? ("error" as const) : ("default" as const),
+          }].map((item) => (
+            <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>{item.label}</span>
+              <Badge variant={item.variant}>{item.value}</Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      <Card hover={false}>
+        <CardHeader
+          title={t("notificationsBestPractices") || "Best practices"}
+          subtitle={t("notificationsBestPracticesSubtitle") || "Keep alerts helpful"}
+          icon="💡"
+        />
+        <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8 }}>
+          {[t("notificationsTipDedupe") || "Deduplicate alerts per channel to avoid spam.",
+            t("notificationsTipPriority") || "Reserve critical priority for blocking events.",
+            t("notificationsTipTesting") || "Test channels weekly to verify credentials."]
+            .map((tip) => (
+              <li key={tip} style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{tip}</li>
+            ))}
+        </ul>
+      </Card>
+
+      {recentFailures.length > 0 && (
+        <Card hover={false}>
+          <CardHeader
+            title={t("notificationsRecentFailures") || "Recent failures"}
+            subtitle={t("notificationsRecentFailuresSubtitle") || "Last few delivery errors"}
+            icon="🚨"
+          />
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {recentFailures.map((entry) => (
+              <div key={entry.id} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: 12, background: "var(--color-surface)" }}>
+                <strong style={{ display: "block", fontSize: 13 }}>{entry.subject}</strong>
+                <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
+                  {new Date(entry.sentAt).toLocaleString()}
+                </span>
+                {entry.errorMessage && (
+                  <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--color-error)" }}>{entry.errorMessage}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      <PageLayout
+        activeHref="/notifications"
+        title="🔔 Notification Center"
+        description={t("notificationsHeroSubtitle") || "Multi-channel alerts, automation rules, and delivery tracking"}
+        heroBadge={heroBadge}
+        heroAside={heroAside}
+        heroFooter={heroFooter}
+        toolbar={toolbar}
+        actions={actions}
+        sidebar={sidebar}
+        heroBackground="linear-gradient(135deg, #fef9c3 0%, #dbeafe 100%)"
+      >
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+          {!hasShopContext && (
+            <Alert variant="info" title={t("getStarted") || "Get started"}>
+              {t("notificationsProvideShop") || "Enter a Shop ID to load channels, rules, and delivery history."}
+            </Alert>
+          )}
+
+          {hasShopContext && (
+            <>
+              {isLoadingData && <LoadingSpinner text={t("loadingNotifications") || "Loading notification data"} />}
+
+              <Card>
+                <CardHeader
+                  title={t("notificationsStatsTitle") || "Operations pulse"}
+                  subtitle={t("notificationsStatsSubtitle") || "Quick look at live automation"}
+                  icon="📊"
+                />
+                <div className="grid grid-4" style={{ gap: 16 }}>
+                  <StatCard icon="📡" label={t("totalChannels") || "Total channels"} value={stats.totalChannels.toString()} color="primary" trend={stats.activeChannels} />
+                  <StatCard icon="⚙️" label={t("activeRules") || "Active rules"} value={stats.activeRules.toString()} color="info" />
+                  <StatCard icon="📤" label={t("sentToday") || "Sent today"} value={stats.sentToday.toString()} color="success" />
+                  <StatCard icon="⚠️" label={t("failedToday") || "Failed today"} value={stats.failedToday.toString()} color="error" />
+                </div>
+              </Card>
+
+              <Card>
+                <Tabs
+                  tabs={[
+                    {
+                      id: "channels",
+                      label: t("channels") || "Channels",
+                      icon: "📡",
+                      badge: channelsArray.length,
+                      content: (
+                        <div style={{ padding: 24 }}>
+                          {filteredChannels.length > 0 ? (
+                            <div className="grid grid-3" style={{ gap: 20 }}>
+                              {filteredChannels.map((channel) => (
+                                <div
+                                  key={channel.id}
+                                  style={{
+                                    padding: 20,
+                                    background: "rgba(255, 255, 255, 0.9)",
+                                    borderRadius: "var(--radius-lg)",
+                                    border: channel.isActive ? "1px solid rgba(34, 197, 94, 0.4)" : "1px solid var(--color-border)",
+                                    boxShadow: "var(--shadow-sm)",
+                                  }}
+                                >
+                                  <div style={{ display: "flex", alignItems: "start", justifyContent: "space-between", marginBottom: 12 }}>
+                                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                                      <span style={{ fontSize: 28 }}>{getChannelIcon(channel.type)}</span>
+                                      <div>
+                                        <h4 style={{ margin: 0, fontSize: 16 }}>{channel.name}</h4>
+                                        <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "4px 0 0" }}>{channel.type}</p>
+                                      </div>
+                                    </div>
+                                    <Badge variant={channel.isActive ? "success" : "error"}>
+                                      {channel.isActive ? t("active") || "Active" : t("inactive") || "Inactive"}
+                                    </Badge>
+                                  </div>
+                                  <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 16 }}>
+                                    {t("created") || "Created"}: {new Date(channel.createdAt).toLocaleDateString()}
+                                  </div>
+                                  <div style={{ display: "flex", gap: 8 }}>
+                                    <Button variant="primary" size="sm" onClick={() => testChannel(channel.id)} disabled={!channel.isActive} fullWidth>
+                                      {t("test") || "Test"}
+                                    </Button>
+                                    <Button
+                                      variant={channel.isActive ? "warning" : "success"}
+                                      size="sm"
+                                      onClick={() => toggleChannel(channel.id, !channel.isActive)}
+                                      fullWidth
+                                    >
+                                      {channel.isActive ? t("disable") || "Disable" : t("enable") || "Enable"}
+                                    </Button>
+                                    <Button variant="danger" size="sm" onClick={() => deleteChannel(channel.id)}>
+                                      🗑️
+                                    </Button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <EmptyState
+                              icon="📡"
+                              title={t("noChannelsConfigured") || "No channels configured"}
+                              description={t("descriptionAddFirstChannel") || "Connect email, SMS, or webhooks to start sending alerts."}
+                              action={
+                                <Button type="button" onClick={() => setShowAddChannelModal(true)}>
+                                  ➕ {t("addChannel") || "Add channel"}
+                                </Button>
+                              }
+                            />
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "rules",
+                      label: t("rules") || "Rules",
+                      icon: "⚙️",
+                      badge: rulesArray.length,
+                      content: (
+                        <div style={{ padding: 24 }}>
+                          {filteredRules.length > 0 ? (
+                            <Table
+                              columns={[
+                                { key: "name", header: t("ruleName") || "Rule name" },
+                                { key: "event", header: t("event") || "Event", width: "160px" },
+                                {
+                                  key: "channel",
+                                  header: t("channel") || "Channel",
+                                  width: "160px",
+                                  render: (row: any) => {
+                                    const channel = channelsArray.find((c) => c.id === row.channelId);
+                                    return channel ? (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span>{getChannelIcon(channel.type)}</span>
+                                        <span style={{ fontSize: 13 }}>{channel.name}</span>
+                                      </div>
+                                    ) : (
+                                      <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{t("unknown") || "Unknown"}</span>
+                                    );
+                                  },
+                                },
+                                {
+                                  key: "priority",
+                                  header: t("priority") || "Priority",
+                                  width: "120px",
+                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{row.priority}</Badge>,
+                                },
+                                {
+                                  key: "status",
+                                  header: t("status") || "Status",
+                                  width: "110px",
+                                  render: (row: any) => <Badge variant={row.isActive ? "success" : "error"}>{row.isActive ? t("active") || "Active" : t("inactive") || "Inactive"}</Badge>,
+                                },
+                                {
+                                  key: "actions",
+                                  header: t("actions") || "Actions",
+                                  width: "140px",
+                                  render: (row: any) => (
+                                    <Button variant={row.isActive ? "warning" : "success"} size="sm" onClick={() => toggleRule(row.id, !row.isActive)}>
+                                      {row.isActive ? t("disable") || "Disable" : t("enable") || "Enable"}
+                                    </Button>
+                                  ),
+                                },
+                              ]}
+                              data={filteredRules}
+                            />
+                          ) : (
+                            <EmptyState
+                              icon="⚙️"
+                              title={t("noNotificationRules") || "No notification rules"}
+                              description={t("descriptionCreateAutomationRules") || "Automate alerts by adding rules for each event."}
+                              action={
+                                <Button type="button" onClick={() => setShowAddRuleModal(true)}>
+                                  ⚙️ {t("addRule") || "Add rule"}
+                                </Button>
+                              }
+                            />
+                          )}
+                        </div>
+                      ),
+                    },
+                    {
+                      id: "history",
+                      label: t("history") || "History",
+                      icon: "📜",
+                      badge: historyArray.length,
+                      content: (
+                        <div style={{ padding: 24 }}>
+                          {filteredHistory.length > 0 ? (
+                            <Table
+                              columns={[
+                                {
+                                  key: "subject",
+                                  header: t("subject") || "Subject",
+                                  render: (row: any) => (
+                                    <div>
+                                      <div style={{ fontWeight: 600 }}>{row.subject}</div>
+                                      <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginTop: 4 }}>
+                                        {row.message.substring(0, 80)}...
+                                      </div>
+                                    </div>
+                                  ),
+                                },
+                                {
+                                  key: "priority",
+                                  header: t("priority") || "Priority",
+                                  width: "110px",
+                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{row.priority}</Badge>,
+                                },
+                                {
+                                  key: "status",
+                                  header: t("status") || "Status",
+                                  width: "110px",
+                                  render: (row: any) => <Badge variant={getStatusColor(row.status) as any}>{row.status}</Badge>,
+                                },
+                                {
+                                  key: "channel",
+                                  header: t("channel") || "Channel",
+                                  width: "140px",
+                                  render: (row: any) => {
+                                    const channel = channelsArray.find((c) => c.id === row.channelId);
+                                    return (
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                        <span>{getChannelIcon(channel?.type || "UNKNOWN")}</span>
+                                        <span style={{ fontSize: 12 }}>{channel?.type || t("unknown") || "Unknown"}</span>
+                                      </div>
+                                    );
+                                  },
+                                },
+                                {
+                                  key: "sentAt",
+                                  header: t("sentAt") || "Sent at",
+                                  width: "180px",
+                                  render: (row: any) => <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{new Date(row.sentAt).toLocaleString()}</span>,
+                                },
+                                {
+                                  key: "error",
+                                  header: t("error") || "Error",
+                                  width: "100px",
+                                  render: (row: any) =>
+                                    row.errorMessage ? (
+                                      <span style={{ fontSize: 12, color: "var(--color-error)", cursor: "pointer" }} title={row.errorMessage}>
+                                        ⚠️ {t("error") || "Error"}
+                                      </span>
+                                    ) : null,
+                                },
+                              ]}
+                              data={filteredHistory}
+                            />
+                          ) : (
+                            <EmptyState
+                              icon="📜"
+                              title={t("noNotificationHistory") || "No notification history"}
+                              description={t("descriptionSentNotifications") || "Recent delivery attempts will appear here."}
+                            />
+                          )}
+                        </div>
+                      ),
+                    },
+                  ]}
+                />
+              </Card>
+            </>
+          )}
+        </div>
+      </PageLayout>
+
+      <Toast />
 
       {/* Add Channel Modal */}
       <Modal
@@ -687,7 +842,7 @@ export default function Notifications() {
           </div>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
 
