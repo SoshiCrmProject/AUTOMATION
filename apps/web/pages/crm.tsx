@@ -228,7 +228,7 @@ export default function CRM() {
 
   const handleRefresh = () => {
     if (!shopId) {
-      pushToast(t("enterShopIdFirst") || "Enter a Shop ID to load data", "info");
+      pushToast(t("enterShopIdFirst") || "Enter a Shop ID to load data", "error");
       return;
     }
     refreshCustomers();
