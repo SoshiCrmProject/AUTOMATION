@@ -6,7 +6,7 @@ import dotenv from "dotenv";
 import { PrismaClient, UserRole, AutoFulfillmentMode, ProcessingStatus, ProcessingMode, AmazonOrderStatus } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
-import { Queue } from "bullmq";
+import { Queue, QueueEvents } from "bullmq";
 import type { RedisOptions } from "ioredis";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
@@ -64,6 +64,9 @@ const redisConnection: RedisOptions = {
   enableReadyCheck: false
 };
 const orderQueue = new Queue("orders", { connection: redisConnection });
+const orderQueueEvents = new QueueEvents("orders", { connection: redisConnection });
+orderQueueEvents.on("error", (err) => console.error("Queue events error", err));
+orderQueueEvents.waitUntilReady().catch((err) => console.error("Queue events init failed", err));
 
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const AES_KEY = process.env.AES_SECRET_KEY;
@@ -85,6 +88,15 @@ async function logAudit(userId: string | undefined, action: string, detail?: any
     data: { userId, action, detail }
   });
 }
+
+const amazonScrapeLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => (req as AuthenticatedRequest).userId ?? req.ip ?? "anon",
+  handler: (_req, res) => res.status(429).json({ error: "Amazon scrape rate limit exceeded" })
+});
 
 function authMiddleware(
   req: AuthenticatedRequest,
@@ -130,50 +142,6 @@ async function ensureSuperAdmin() {
   }
 }
 ensureSuperAdmin().catch((err) => console.error("Superadmin bootstrap failed", err));
-
-type ScrapePreview = {
-  productUrl: string;
-  asin: string;
-  title: string;
-  price: number;
-  currency: string;
-  isAvailable: boolean;
-  isNew: boolean;
-  estimatedDelivery: string;
-  pointsEarned: number;
-  shippingText: string;
-};
-
-function extractAsin(productUrl: string): string | null {
-  const match = productUrl.match(/(?:dp|gp\/[A-Za-z0-9_-]+\/product)\/([A-Z0-9]{10})/i);
-  if (match?.[1]) return match[1].toUpperCase();
-  const alt = productUrl.match(/([A-Z0-9]{10})(?:[/?]|$)/i);
-  return alt?.[1]?.toUpperCase() ?? null;
-}
-
-function buildSimulatedScrape(productUrl: string): ScrapePreview {
-  const asin = extractAsin(productUrl) ?? crypto.createHash("md5").update(productUrl).digest("hex").slice(0, 10).toUpperCase();
-  const hash = crypto.createHash("md5").update(productUrl).digest("hex");
-  const base = 3200 + (parseInt(hash.slice(0, 6), 16) % 7000);
-  const price = Math.round(base / 50) * 50;
-  const pointsEarned = Math.max(10, Math.round(price * 0.01));
-  const shippingWindow = (parseInt(hash.slice(6, 8), 16) % 3) + 2;
-  const eta = new Date(Date.now() + shippingWindow * 24 * 60 * 60 * 1000).toISOString();
-  const available = (parseInt(hash.slice(8, 10), 16) % 10) !== 0;
-  const isNew = (parseInt(hash.slice(10, 12), 16) % 5) !== 0;
-  return {
-    productUrl,
-    asin,
-    title: `Amazon Listing ${asin}`,
-    price,
-    currency: "¥",
-    isAvailable: available,
-    isNew,
-    estimatedDelivery: eta,
-    pointsEarned,
-    shippingText: available ? `Ships in ${shippingWindow}-${shippingWindow + 1} days` : "Currently unavailable"
-  };
-}
 
 // Root route for testing
 app.get("/", (_req, res) => res.json({ 
@@ -742,6 +710,74 @@ app.get("/orders/:id", authMiddleware, asyncHandler(async (req: AuthenticatedReq
   res.json(order);
 }));
 
+type ScrapePreviewJobResult =
+  | {
+      ok: true;
+      result: {
+        productUrl: string;
+        price: number;
+        currency?: string;
+        isAvailable: boolean;
+        isNew: boolean;
+        estimatedDelivery?: string | null;
+        pointsEarned?: number | null;
+        shippingText?: string | null;
+        title?: string | null;
+        asin?: string | null;
+        scrapedAt: string;
+      };
+    }
+  | {
+      ok: false;
+      error: { code: string; message: string; screenshotPath?: string | null };
+    };
+
+const amazonScrapeSchema = z.object({ productUrl: z.string().url() });
+
+async function handleAmazonScrape(req: AuthenticatedRequest, res: Response) {
+  const parsed = amazonScrapeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  const productUrl = parsed.data.productUrl.trim();
+  if (!/amazon\./i.test(productUrl)) {
+    return res.status(400).json({ error: "URL must be an Amazon listing" });
+  }
+
+  const job = await orderQueue.add(
+    "scrape-preview",
+    { productUrl },
+    { removeOnComplete: true, removeOnFail: true }
+  );
+  const startedAt = Date.now();
+  try {
+    const payload = (await job.waitUntilFinished(orderQueueEvents, 120_000)) as ScrapePreviewJobResult | undefined;
+    if (!payload) {
+      return res.status(502).json({ error: "Scrape returned no data" });
+    }
+    if (payload.ok) {
+      await logAudit(req.userId, "amazon-scrape", { productUrl, asin: payload.result.asin });
+      return res.json({
+        status: "ok",
+        result: payload.result,
+        durationMs: Date.now() - startedAt,
+        message: "Live Amazon data captured"
+      });
+    }
+    return res.status(422).json({
+      error: payload.error.message,
+      code: payload.error.code,
+      screenshot: payload.error.screenshotPath ?? null
+    });
+  } catch (err: any) {
+    if (err?.message?.includes("timed out")) {
+      return res.status(504).json({ error: "Amazon scrape timed out" });
+    }
+    console.error("Amazon scrape failed", err);
+    return res.status(502).json({ error: "Unable to scrape Amazon product" });
+  }
+}
+
 // Queue health
 app.get("/ops/queue", authMiddleware, requireRole([UserRole.ADMIN]), asyncHandler(async (_req: AuthenticatedRequest, res) => {
   const counts = await Promise.all([
@@ -753,28 +789,8 @@ app.get("/ops/queue", authMiddleware, requireRole([UserRole.ADMIN]), asyncHandle
   res.json({ waiting: counts[0], active: counts[1], failed: counts[2], delayed: counts[3] });
 }));
 
-// Test scrape endpoint (simulated preview)
-app.post("/ops/amazon-test", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
-  const schema = z.object({ productUrl: z.string().url() });
-  const parsed = schema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
-
-  const preview = buildSimulatedScrape(parsed.data.productUrl);
-  let jobQueued = false;
-  try {
-    await orderQueue.add("test-scrape", { userId: req.userId, productUrl: parsed.data.productUrl }, { removeOnComplete: true, removeOnFail: false });
-    jobQueued = true;
-  } catch (err) {
-    console.warn("Unable to enqueue test scrape", err);
-  }
-
-  res.json({
-    status: "simulated",
-    jobQueued,
-    message: jobQueued ? "Preview generated and job queued" : "Preview generated (queue unavailable)",
-    result: preview
-  });
-}));
+app.post("/ops/amazon-scrape", authMiddleware, amazonScrapeLimiter, asyncHandler(handleAmazonScrape));
+app.post("/ops/amazon-test", authMiddleware, amazonScrapeLimiter, asyncHandler(handleAmazonScrape));
 
 // Connector/status summary
 app.get("/ops/status", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {

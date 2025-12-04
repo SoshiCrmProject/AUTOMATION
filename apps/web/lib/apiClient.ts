@@ -204,7 +204,27 @@ if (process.env.NEXT_PUBLIC_MOCK_API === "1") {
 
     // Ops
     if (url === "/api/ops/queue" && method === "get") return ok({ waiting: 0, active: 0, failed: 0, delayed: 0 });
-    if (url === "/api/ops/amazon-test" && method === "post") return ok({ success: true });
+    if ((url === "/api/ops/amazon-test" || url === "/api/ops/amazon-scrape") && method === "post") {
+      const body = typeof config.data === "string" ? JSON.parse(config.data || "{}") : (config.data as any) || {};
+      const now = new Date().toISOString();
+      return ok({
+        status: "ok",
+        message: "Mock scrape complete",
+        result: {
+          productUrl: body.productUrl ?? "https://www.amazon.co.jp/dp/B00TEST",
+          price: 4980,
+          currency: "¥",
+          isAvailable: true,
+          isNew: true,
+          estimatedDelivery: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+          pointsEarned: 50,
+          shippingText: "Ships in 2-3 days",
+          title: "Mock Amazon Listing",
+          asin: "B00MOCK123",
+          scrapedAt: now
+        }
+      });
+    }
     if (url === "/api/ops/status" && method === "get")
       return ok({
         lastOrder: now,

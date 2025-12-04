@@ -53,12 +53,23 @@ export default function OpsPage() {
 
   const testScrape = async () => {
     setFeedback(null);
+    const normalizedUrl = productUrl.trim();
+    if (!normalizedUrl || !/amazon\./i.test(normalizedUrl)) {
+      setFeedback({ type: "warning", text: t("pleaseEnterValidAmazonURL") || "Enter a valid Amazon URL" });
+      return;
+    }
     setTesting(true);
     try {
-      await api.post("/api/ops/amazon-test", { productUrl });
-      setFeedback({ type: "success", text: t("testScrapeQueued") || "Amazon scrape queued" });
+      const response = await api.post("/api/ops/amazon-scrape", { productUrl: normalizedUrl });
+      const details = response.data?.result;
+      const summary = details
+        ? `${t("testScrapeQueued") || "Amazon scrape queued"} · ¥${details.price.toLocaleString()}`
+        : t("testScrapeQueued") || "Amazon scrape queued";
+      setFeedback({ type: "success", text: summary });
     } catch (e: any) {
-      setFeedback({ type: "error", text: e?.response?.data?.error ?? (t("genericError") || "Unable to queue test") });
+      const code = e?.response?.data?.code;
+      const message = e?.response?.data?.error ?? (t("genericError") || "Unable to queue test");
+      setFeedback({ type: "error", text: code ? `${code}: ${message}` : message });
     } finally {
       setTesting(false);
     }

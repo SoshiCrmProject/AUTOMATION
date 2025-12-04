@@ -118,6 +118,33 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
     </span>
   );
 
+  const navSearchInput = (variant: "inline" | "drawer" = "inline") => (
+    <div className={`nav-search ${variant === "inline" ? "nav-search--inline" : ""}`}>
+      <input
+        type="text"
+        placeholder={t("jumpToPage") || "Jump to a page"}
+        value={searchValue}
+        onChange={(event) => setSearchValue(event.target.value)}
+        onKeyDown={handleNavSearch}
+        aria-label={t("jumpToPage") || "Jump to page"}
+      />
+      <span className="nav-search-hint">↵</span>
+    </div>
+  );
+
+  const primaryCta = (
+    <button
+      type="button"
+      className="nav-primary-cta"
+      onClick={() => {
+        router.push("/dashboard");
+        setMobileMenuOpen(false);
+      }}
+    >
+      🚀 {t("navDashboard") || "Dashboard"}
+    </button>
+  );
+
   const authCtas =
     authChecked && !hasToken ? (
       <div className="nav-auth-ctas">
@@ -140,7 +167,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
 
   return (
     <header className={`nav ${scrolled ? "nav--scrolled" : ""}`} role="banner">
-      <div className="nav__inner">
+      <div className="nav__utility">
         <div className="nav__brand">
           <div className="nav__brand-mark">🚀</div>
           <div>
@@ -149,7 +176,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
           </div>
         </div>
         {navStatusPill}
-        <div className="nav__actions-desktop">
+        <div className="nav__utility-actions">
           <button
             type="button"
             className="nav-ghost-action"
@@ -165,11 +192,12 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
             🛟 {t("contactOps") || "Ops Center"}
           </button>
           <LanguageSelector />
+          {!isCompactNav && authCtas}
         </div>
         <button
           className={`mobile-menu-toggle ${isCompactNav ? "is-visible" : ""}`}
           onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          aria-label="Toggle navigation menu"
+          aria-label={t("toggleNavigation") || "Toggle navigation menu"}
           aria-expanded={mobileMenuOpen}
           aria-controls={navLinksId}
         >
@@ -177,51 +205,66 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
         </button>
       </div>
 
-      <div
-        id={navLinksId}
-        className={`nav-links ${mobileMenuOpen ? "mobile-open" : ""} ${
-          isCompactNav ? "is-compact" : ""
-        }`}
-        role="navigation"
-        aria-label={t("primaryNavigation", { defaultValue: "Primary navigation" })}
-      >
-        <div className="nav-search">
-          <input
-            type="text"
-            placeholder={t("jumpToPage") || "Jump to a page"}
-            value={searchValue}
-            onChange={(event) => setSearchValue(event.target.value)}
-            onKeyDown={handleNavSearch}
-            aria-label={t("jumpToPage") || "Jump to page"}
-          />
-          <span className="nav-search-hint">↵</span>
+      {!isCompactNav && (
+        <div className="nav__primary">
+          {navSearchInput("inline")}
+          <div
+            className="nav-links nav-links--inline"
+            role="navigation"
+            aria-label={t("primaryNavigation", { defaultValue: "Primary navigation" })}
+          >
+            {visibleLinks.length === 0 && (
+              <p className="nav-links-empty">{t("noResults") || "No matches"}</p>
+            )}
+            {visibleLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`nav-link ${link.href === activeHref ? "is-active" : ""}`}
+              >
+                <span className="nav-link-icon" aria-hidden="true">
+                  {link.icon}
+                </span>
+                <span>{link.label}</span>
+              </Link>
+            ))}
+          </div>
+          <div className="nav-primary-cta-wrapper">{primaryCta}</div>
         </div>
+      )}
 
-        <div className="nav-links-scroll">
-          {visibleLinks.length === 0 && (
-            <p className="nav-links-empty">{t("noResults") || "No matches"}</p>
-          )}
-          {visibleLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              onClick={() => setMobileMenuOpen(false)}
-              className={`nav-link ${link.href === activeHref ? "is-active" : ""}`}
-            >
-              <span className="nav-link-icon" aria-hidden="true">
-                {link.icon}
-              </span>
-              <span>{link.label}</span>
-            </Link>
-          ))}
+      {isCompactNav && (
+        <div
+          id={navLinksId}
+          className={`nav-drawer ${mobileMenuOpen ? "mobile-open" : ""}`}
+          role="dialog"
+          aria-label={t("primaryNavigation", { defaultValue: "Primary navigation" })}
+        >
+          {navSearchInput("drawer")}
+          <div className="nav-links nav-links--drawer">
+            {visibleLinks.length === 0 && (
+              <p className="nav-links-empty">{t("noResults") || "No matches"}</p>
+            )}
+            {visibleLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileMenuOpen(false)}
+                className={`nav-link ${link.href === activeHref ? "is-active" : ""}`}
+              >
+                <span className="nav-link-icon" aria-hidden="true">
+                  {link.icon}
+                </span>
+                <span>{link.label}</span>
+              </Link>
+            ))}
+          </div>
+          <div className="nav__actions-mobile">
+            {primaryCta}
+            {authCtas}
+          </div>
         </div>
-
-        <div className="nav__actions-mobile">
-          {authCtas}
-        </div>
-      </div>
-
-      {!isCompactNav && authCtas}
+      )}
     </header>
   );
 }

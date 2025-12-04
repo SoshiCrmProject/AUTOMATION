@@ -10,6 +10,8 @@ export type AmazonScrapeResult = {
   estimatedDelivery?: Date;
   pointsEarned?: number;
   shippingText?: string | null;
+  title?: string | null;
+  asin?: string | null;
 };
 
 export type AmazonCheckoutResult = {
@@ -65,9 +67,11 @@ class BrowserPool {
     }
 
     const browser = await this.getBrowser();
-    const context = await browser.newContext({
-      storageState: this.getStoragePath(email)
-    });
+    const storagePath = this.getStoragePath(email);
+    const hasState = fs.existsSync(storagePath);
+    const context = hasState
+      ? await browser.newContext({ storageState: storagePath })
+      : await browser.newContext();
     
     this.contexts.set(email, { context, lastUsed: Date.now() });
     return context;
@@ -78,16 +82,13 @@ class BrowserPool {
     await context.storageState({ path: storagePath });
   }
 
-  private getStoragePath(email: string): string | undefined {
+  private getStoragePath(email: string): string {
     const dir = path.join(process.cwd(), "tmp", "sessions");
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
     }
     const safeName = email.replace(/[^a-zA-Z0-9]/g, '_');
-    const filepath = path.join(dir, `amazon_${safeName}.json`);
-    
-    // Return undefined if file doesn't exist (first time login)
-    return fs.existsSync(filepath) ? filepath : undefined;
+    return path.join(dir, `amazon_${safeName}.json`);
   }
 
   async cleanup() {
@@ -130,6 +131,52 @@ const selectors = {
   deleteCartItem: [".sc-action-delete", "input[value='Delete']", "span[data-action='delete']"],
   orderConfirmation: [".a-alert-success", "#confirmation-message", "h1:has-text('注文を承りました')", "h1:has-text('Thank you')"]
 };
+
+function extractAsinFromUrl(productUrl: string): string | null {
+  const regex = /(?:dp|gp\/[A-Za-z0-9_-]+\/product)\/([A-Z0-9]{10})/i;
+  const alt = /([A-Z0-9]{10})(?:[/?]|$)/i;
+  const primary = productUrl.match(regex)?.[1];
+  if (primary) return primary.toUpperCase();
+  const secondary = productUrl.match(alt)?.[1];
+  return secondary ? secondary.toUpperCase() : null;
+}
+
+async function extractAsinFromDom(page: Page): Promise<string | null> {
+  const fromBullets = await page
+    .$$eval("#detailBullets_feature_div li", (nodes) => {
+      for (const node of nodes) {
+        const text = node.textContent || "";
+        if (/ASIN/i.test(text)) {
+          const match = text.match(/([A-Z0-9]{10})/i);
+          if (match) return match[1].toUpperCase();
+        }
+      }
+      return null;
+    })
+    .catch(() => null);
+  if (fromBullets) return fromBullets;
+
+  return page
+    .$$eval("#productDetails_techSpec_section_1 tr, #productDetails_detailBullets_sections1 tr", (rows) => {
+      for (const row of rows) {
+        const header = row.querySelector("th")?.textContent || "";
+        const value = row.querySelector("td")?.textContent || "";
+        if (/ASIN/i.test(header)) {
+          const match = value.match(/([A-Z0-9]{10})/i);
+          if (match) return match[1].toUpperCase();
+        }
+      }
+      return null;
+    })
+    .catch(() => null);
+}
+
+async function getProductTitle(page: Page): Promise<string | null> {
+  const el = await page.$("#productTitle, #titleSection #title, h1#title");
+  if (!el) return null;
+  const text = await el.textContent();
+  return text?.trim() || null;
+}
 
 async function captureScreenshot(page: Page, prefix: string): Promise<string> {
   const dir = path.join(process.cwd(), "tmp");
@@ -202,11 +249,29 @@ async function ensureLoggedIn(page: Page, email: string, password: string) {
     const path = await captureScreenshot(page, "amazon-2fa");
     throw new AutomationError("AMAZON_2FA_REQUIRED", "2FA required. Manual intervention needed.", path);
   }
+
+  const errorBox = await page.$("#auth-error-message-box, div[data-testid='signin-error-message']");
+  if (errorBox) {
+    const errorText = (await errorBox.textContent())?.trim() || "Amazon login failed";
+    const path = await captureScreenshot(page, "amazon-login-failed");
+    throw new AutomationError("AMAZON_LOGIN_FAILED", errorText, path);
+  }
+}
+
+export async function verifyAmazonCredentials(input: { loginEmail: string; loginPassword: string }) {
+  const context = await browserPool.getContext(input.loginEmail);
+  const page = await context.newPage();
+  try {
+    await ensureLoggedIn(page, input.loginEmail, input.loginPassword);
+    await browserPool.saveContext(input.loginEmail, context);
+  } finally {
+    await page.close();
+  }
 }
 
 export async function scrapeAmazonProduct(
   productUrl: string
-): Promise<{ browser: Browser; page: Page; result: AmazonScrapeResult }> {
+): Promise<{ browser: Browser; context: BrowserContext; page: Page; result: AmazonScrapeResult }> {
   const browser = await browserPool.getBrowser();
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -218,17 +283,32 @@ export async function scrapeAmazonProduct(
   const conditionText = await getFirstText(page, selectors.condition);
   const deliveryText = await getFirstText(page, selectors.delivery);
   const pointsText = await getFirstText(page, selectors.points);
+  const productTitle = await getProductTitle(page);
+  const asinFromUrl = extractAsinFromUrl(productUrl);
+  const asinFromDom = await extractAsinFromDom(page);
 
   const { value: price, currency } = parsePrice(priceText);
   const isAvailable = availabilityText ? /in stock|available|在庫あり|残り|通常/i.test(availabilityText) : false;
   const isNew = conditionText ? /new|新品/i.test(conditionText) : true;
   const estimatedDelivery = parseEstimatedDelivery(deliveryText);
   const pointsEarned = pointsText ? parseInt(pointsText.replace(/[^\d]/g, ""), 10) || undefined : undefined;
+  const asin = asinFromDom ?? asinFromUrl ?? null;
 
   return {
     browser,
+    context,
     page,
-    result: { price, currency, isAvailable, isNew, estimatedDelivery, pointsEarned, shippingText: deliveryText }
+    result: {
+      price,
+      currency,
+      isAvailable,
+      isNew,
+      estimatedDelivery,
+      pointsEarned,
+      shippingText: deliveryText,
+      title: productTitle,
+      asin
+    }
   };
 }
 

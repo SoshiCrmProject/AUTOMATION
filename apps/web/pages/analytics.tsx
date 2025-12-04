@@ -128,10 +128,11 @@ const PERIOD_DAY_MAP: Record<'7' | '30' | '90', number> = {
 };
 
 export default function Analytics() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
   const [selectedPeriod, setSelectedPeriod] = useState<'7' | '30' | '90'>('30');
   const [showTour, setShowTour] = useState(false);
   const [useFallbackData, setUseFallbackData] = useState(false);
+  const locale = i18n?.language;
   
   const { data: dashboard, error: dashError } = useSWR<DashboardData>("/api/analytics/dashboard", fetcher);
   const { data: profitTrends, error: trendError } = useSWR<ProfitTrend[]>(
@@ -158,6 +159,10 @@ export default function Analytics() {
   const effectiveDashboard = useFallbackData ? FALLBACK_DASHBOARD : dashboard;
   const hasTrendData = Array.isArray(profitTrends) && profitTrends.length > 0;
   const trendsArray = useFallbackData ? fallbackTrends : hasTrendData ? (profitTrends as ProfitTrend[]) : [];
+  const dateFormatter = useMemo(
+    () => new Intl.DateTimeFormat(locale || undefined, { month: "short", day: "numeric" }),
+    [locale]
+  );
   const isLoading = !useFallbackData && !effectiveDashboard && !dashError;
 
   // Calculate metrics
@@ -182,13 +187,47 @@ export default function Analytics() {
   };
 
   // Prepare chart data
-  const chartData = trendsArray.map(trend => ({
-    date: new Date(trend.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+  const chartData = trendsArray.map((trend) => ({
+    date: dateFormatter.format(new Date(trend.date)),
     revenue: Number(trend.totalRevenue),
     profit: Number(trend.totalProfit),
     orders: trend.totalOrders,
     successRate: trend.totalOrders > 0 ? (trend.successfulOrders / trend.totalOrders) * 100 : 0
   }));
+  const conversionRatePercent = (weekConversionRate * 100).toFixed(1);
+  const insights: Array<{ title: string; body: string; variant?: "warning" }> = [
+    {
+      title: t("analyticsRevenueGrowthTitle") || "Revenue growth",
+      body:
+        weekRevenue > 10000
+          ? t("analyticsRevenueGrowthPositive") || "Your weekly revenue is trending positively. Consider scaling your operations."
+          : t("analyticsRevenueGrowthSteady") || "Your weekly revenue is trending steadily. Focus on marketing and product optimization."
+    },
+    {
+      title: t("analyticsConversionTitle") || "Conversion rate",
+      body:
+        weekConversionRate > 0.05
+          ? t("analyticsConversionPositive", { rate: conversionRatePercent }) || `At ${conversionRatePercent}%, your conversion is excellent. Maintain current strategies.`
+          : t("analyticsConversionImprove", { rate: conversionRatePercent }) || `At ${conversionRatePercent}%, your conversion is steady. Try improving product descriptions and pricing.`
+    },
+    {
+      title: t("analyticsOrderVolumeTitle") || "Order volume",
+      body:
+        weekOrders > 50
+          ? t("analyticsOrderVolumeHigh", { count: weekOrders }) || `${weekOrders} orders this week. High volume detected - ensure inventory levels are adequate.`
+          : t("analyticsOrderVolumeLow", { count: weekOrders }) || `${weekOrders} orders this week. Consider promotional campaigns to boost volume.`
+    }
+  ];
+
+  if (alertLowStock > 0) {
+    insights.push({
+      title: t("lowStock") || "Low stock",
+      body:
+        t("analyticsStockAlertMessage", { count: alertLowStock }) ||
+        `${alertLowStock} products need restocking to avoid fulfillment delays.`,
+      variant: "warning"
+    });
+  }
   const heroBadge = (
     <Badge variant={useFallbackData ? "warning" : "info"}>
       {useFallbackData ? t("analyticsSampleDataTitle") : t("liveMetrics") || "Live metrics"}
@@ -234,33 +273,37 @@ export default function Analytics() {
   );
 
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <Select
-        fullWidth={false}
-        value={selectedPeriod}
-        onChange={(event) => setSelectedPeriod(event.target.value as '7' | '30' | '90')}
-        options={[
-          { value: "7", label: t("last7Days") || "Last 7 days" },
-          { value: "30", label: t("last30Days") || "Last 30 days" },
-          { value: "90", label: t("last90Days") || "Last 90 days" }
-        ]}
-        style={{ marginBottom: 0, minWidth: 180 }}
-      />
-      <Button type="button" variant="ghost" onClick={() => window.location.reload()}>
-        🔄 {t("refreshData") || "Refresh"}
-      </Button>
-      <Badge variant={useFallbackData ? "warning" : "success"}>
-        {useFallbackData ? t("sampleData") || "Sample data" : t("liveData") || "Live data"}
-      </Badge>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="full-width-mobile" style={{ minWidth: 200 }}>
+        <Select
+          fullWidth
+          value={selectedPeriod}
+          onChange={(event) => setSelectedPeriod(event.target.value as '7' | '30' | '90')}
+          options={[
+            { value: "7", label: t("last7Days") || "Last 7 days" },
+            { value: "30", label: t("last30Days") || "Last 30 days" },
+            { value: "90", label: t("last90Days") || "Last 90 days" }
+          ]}
+          style={{ marginBottom: 0 }}
+        />
+      </div>
+      <div className="stack-sm full-width-mobile" style={{ flexWrap: "wrap", gap: 12, justifyContent: "flex-end" }}>
+        <Button type="button" variant="ghost" className="full-width-mobile" onClick={() => window.location.reload()}>
+          🔄 {t("refreshData") || "Refresh"}
+        </Button>
+        <Badge variant={useFallbackData ? "warning" : "success"}>
+          {useFallbackData ? t("sampleData") || "Sample data" : t("liveData") || "Live data"}
+        </Badge>
+      </div>
     </div>
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={() => window.open("/api/analytics/export", "_blank")}>
+    <div className="stack-md wrap">
+      <Button type="button" className="full-width-mobile" onClick={() => window.open("/api/analytics/export", "_blank")}>
         ⬇️ {t("exportCsv") || "Export CSV"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleReplayTour}>
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleReplayTour}>
         🧭 {t("replayTour") || "Replay tour"}
       </Button>
     </div>
@@ -331,9 +374,19 @@ export default function Analytics() {
       >
         {(alertLowStock > 0 || alertErrors > 0 || alertReturns > 0) && (
           <Alert variant="warning" title={t("attentionRequired")}>
-            {alertLowStock > 0 && `${alertLowStock} ${t("productsLowStock") || "products low on stock"}. `}
-            {alertErrors > 0 && `${alertErrors} ${t("errorsInPeriod") || "errors in the last 7 days"}. `}
-            {alertReturns > 0 && `${alertReturns} ${t("pendingReturns") || "pending returns"}.`}
+            {[
+              alertLowStock > 0
+                ? t("analyticsAlertLowStock", { count: alertLowStock }) || `${alertLowStock} ${t("productsLowStock") || "products low on stock"}.`
+                : null,
+              alertErrors > 0
+                ? t("analyticsAlertErrors", { count: alertErrors }) || `${alertErrors} ${t("errorsInPeriod") || "errors in the last 7 days"}.`
+                : null,
+              alertReturns > 0
+                ? t("analyticsAlertReturns", { count: alertReturns }) || `${alertReturns} ${t("pendingReturns") || "pending returns"}.`
+                : null
+            ]
+              .filter(Boolean)
+              .join(' ')}
           </Alert>
         )}
 
@@ -435,7 +488,7 @@ export default function Analytics() {
                 <Card>
                   <CardHeader
                     title={t("revenueAndProfitAnalytics")}
-                    subtitle={t("interactiveCharts").replace('{days}', selectedPeriod)}
+                    subtitle={t("interactiveCharts", { days: selectedPeriod })}
                     icon="📊"
                   />
 
@@ -463,7 +516,7 @@ export default function Analytics() {
                           stroke="#10b981"
                           fill="#10b981"
                           fillOpacity={0.3}
-                          name="Revenue (¥)"
+                          name={t("analyticsLegendRevenue") || "Revenue (¥)"}
                         />
                         <Area
                           type="monotone"
@@ -471,7 +524,7 @@ export default function Analytics() {
                           stroke="#3b82f6"
                           fill="#3b82f6"
                           fillOpacity={0.3}
-                          name="Profit (¥)"
+                          name={t("analyticsLegendProfit") || "Profit (¥)"}
                         />
                       </AreaChart>
                     </ResponsiveContainer>
@@ -494,7 +547,12 @@ export default function Analytics() {
                           }}
                         />
                         <Legend />
-                        <Bar dataKey="orders" fill="#8b5cf6" name="Total Orders" radius={[8, 8, 0, 0]} />
+                        <Bar
+                          dataKey="orders"
+                          fill="#8b5cf6"
+                          name={t("analyticsLegendOrders") || "Total Orders"}
+                          radius={[8, 8, 0, 0]}
+                        />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
@@ -514,7 +572,7 @@ export default function Analytics() {
                             border: '1px solid var(--color-border)',
                             borderRadius: '8px'
                           }}
-                          formatter={(value: any) => `${value.toFixed(1)}%`}
+                          formatter={(value: any) => (typeof value === 'number' ? `${value.toFixed(1)}%` : value)}
                         />
                         <Legend />
                         <Line
@@ -522,7 +580,7 @@ export default function Analytics() {
                           dataKey="successRate"
                           stroke="#f59e0b"
                           strokeWidth={3}
-                          name="Success Rate (%)"
+                          name={t("analyticsLegendSuccessRate") || "Success Rate (%)"}
                           dot={{ fill: '#f59e0b', r: 4 }}
                         />
                       </LineChart>
@@ -581,23 +639,18 @@ export default function Analytics() {
                 />
                 <div style={{ padding: '16px 0' }}>
                   <ul style={{ margin: 0, padding: '0 0 0 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
-                      <strong>Revenue Growth:</strong> Your weekly revenue is trending {weekRevenue > 10000 ? 'positively' : 'steadily'}.
-                      {weekRevenue > 10000 ? ' Consider scaling your operations.' : ' Focus on marketing and product optimization.'}
-                    </li>
-                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
-                      <strong>Conversion Rate:</strong> At {(weekConversionRate * 100).toFixed(1)}%, your conversion is {weekConversionRate > 0.05 ? 'excellent' : 'good'}.
-                      {weekConversionRate <= 0.05 ? ' Try improving product descriptions and pricing.' : ' Maintain current strategies.'}
-                    </li>
-                    <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-text)' }}>
-                      <strong>Order Volume:</strong> {weekOrders} orders this week.
-                      {weekOrders > 50 ? ' High volume detected - ensure inventory levels are adequate.' : ' Consider promotional campaigns to boost orders.'}
-                    </li>
-                    {alertLowStock > 0 && (
-                      <li style={{ fontSize: '14px', lineHeight: 1.6, color: 'var(--color-warning)' }}>
-                        <strong>⚠️ Stock Alert:</strong> {alertLowStock} products need restocking to avoid fulfillment delays.
+                    {insights.map((insight, idx) => (
+                      <li
+                        key={`insight-${idx}`}
+                        style={{
+                          fontSize: '14px',
+                          lineHeight: 1.6,
+                          color: insight.variant === 'warning' ? 'var(--color-warning)' : 'var(--color-text)'
+                        }}
+                      >
+                        <strong>{insight.title}:</strong> {insight.body}
                       </li>
-                    )}
+                    ))}
                   </ul>
                 </div>
               </Card>

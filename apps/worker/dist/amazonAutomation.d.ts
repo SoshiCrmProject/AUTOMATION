@@ -1,4 +1,4 @@
-import { Browser, Page } from "playwright";
+import { Browser, Page, BrowserContext } from "playwright";
 export type AmazonScrapeResult = {
     price: number;
     currency?: string;
@@ -7,6 +7,8 @@ export type AmazonScrapeResult = {
     estimatedDelivery?: Date;
     pointsEarned?: number;
     shippingText?: string | null;
+    title?: string | null;
+    asin?: string | null;
 };
 export type AmazonCheckoutResult = {
     amazonOrderId: string | null;
@@ -26,8 +28,13 @@ export declare class AutomationError extends Error {
     screenshotPath?: string;
     constructor(code: string, message: string, screenshotPath?: string);
 }
+export declare function verifyAmazonCredentials(input: {
+    loginEmail: string;
+    loginPassword: string;
+}): Promise<void>;
 export declare function scrapeAmazonProduct(productUrl: string): Promise<{
     browser: Browser;
+    context: BrowserContext;
     page: Page;
     result: AmazonScrapeResult;
 }>;

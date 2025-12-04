@@ -380,46 +380,67 @@ export default function OrdersPage() {
   );
 
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <Input
-        placeholder={t("searchByOrderID") || "Search orders"}
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        aria-label={t("search") || "Search"}
-        style={{ flex: "1 1 220px", minWidth: 200 }}
-      />
-      <Select
-        value={statusFilter}
-        onChange={(e) => setStatusFilter(e.target.value)}
-        options={[
-          { value: "all", label: t("allOrders") || "All orders" },
-          { value: "fulfilled", label: t("fulfilled") || "Fulfilled" },
-          { value: "failed", label: t("failed") || "Failed" },
-          { value: "pending", label: t("pending") || "Pending" },
-        ]}
-        style={{ flex: "0 0 200px", minWidth: 180 }}
-      />
-      <Button type="button" variant="ghost" onClick={() => { setStatusFilter("all"); setSearchTerm(""); }}>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="full-width-mobile" style={{ flex: "1 1 240px", minWidth: 200 }}>
+        <Input
+          placeholder={t("searchByOrderID") || "Search orders"}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          aria-label={t("search") || "Search"}
+        />
+      </div>
+      <div className="full-width-mobile" style={{ flex: "0 0 200px", minWidth: 180 }}>
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          options={[
+            { value: "all", label: t("allOrders") || "All orders" },
+            { value: "fulfilled", label: t("fulfilled") || "Fulfilled" },
+            { value: "failed", label: t("failed") || "Failed" },
+            { value: "pending", label: t("pending") || "Pending" },
+          ]}
+        />
+      </div>
+      <Button
+        type="button"
+        variant="ghost"
+        className="full-width-mobile"
+        onClick={() => {
+          setStatusFilter("all");
+          setSearchTerm("");
+        }}
+      >
         🧼 {t("clearFilters") || "Clear filters"}
       </Button>
     </div>
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={handlePollNow} disabled={loading}>
+    <div className="stack-md wrap">
+      <Button type="button" className="full-width-mobile" onClick={handlePollNow} disabled={loading}>
         🔄 {t("pollNow") || "Poll now"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleManualRefresh}>
+      <Button type="button" className="full-width-mobile" variant="ghost" onClick={handleManualRefresh}>
         ♻️ {t("refreshData") || "Refresh"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleExportCSV}>
+      <Button type="button" className="full-width-mobile" variant="ghost" onClick={handleExportCSV}>
         📊 {t("exportCsv") || "Export CSV"}
       </Button>
-      <Button type="button" variant={autoRefresh ? "primary" : "ghost"} onClick={handleToggleAutoRefresh}>
+      <Button
+        type="button"
+        className="full-width-mobile"
+        variant={autoRefresh ? "primary" : "ghost"}
+        onClick={handleToggleAutoRefresh}
+      >
         {autoRefresh ? `⚡ ${t("live") || "Live"}` : `⏸️ ${t("paused") || "Paused"}`}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleBulkRetry} disabled={selectedOrders.size === 0 || loading}>
+      <Button
+        type="button"
+        className="full-width-mobile"
+        variant="ghost"
+        onClick={handleBulkRetry}
+        disabled={selectedOrders.size === 0 || loading}
+      >
         🔁 {t("retrySelected") || "Retry selected"}
       </Button>
     </div>

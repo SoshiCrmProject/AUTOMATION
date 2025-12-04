@@ -63,7 +63,8 @@ export default function ProductScraperPage() {
   };
 
   const scrapeProduct = async () => {
-    if (!productUrl || !productUrl.includes("amazon.co.jp")) {
+    const normalizedUrl = productUrl.trim();
+    if (!normalizedUrl || !/amazon\./i.test(normalizedUrl)) {
       pushToast(t("pleaseEnterValidAmazonURL"), "error");
       return;
     }
@@ -74,15 +75,17 @@ export default function ProductScraperPage() {
     setScrapeAttempts((prev) => prev + 1);
 
     try {
-      const response = await api.post("/api/ops/amazon-test", { productUrl });
-      const normalized = coerceScrapeResult(response.data?.result, productUrl);
+      const response = await api.post("/api/ops/amazon-scrape", { productUrl: normalizedUrl });
+      const normalized = coerceScrapeResult(response.data?.result, normalizedUrl);
       setResult(normalized);
       setLastSuccessAt(new Date().toISOString());
       pushToast(response.data?.message || t("scrapingComplete"), "success");
     } catch (error: any) {
-      const errorMsg = error.response?.data?.error || t("failedToScrapeProduct");
-      setError(errorMsg);
-      pushToast(errorMsg, "error");
+      const errorCode = error.response?.data?.code;
+      const errorMsg = error.response?.data?.error || (t("failedToScrapeProduct") as string);
+      const combined = errorCode ? `${errorCode}: ${errorMsg}` : errorMsg;
+      setError(combined);
+      pushToast(combined, "error");
     } finally {
       setLoading(false);
     }
@@ -186,28 +189,28 @@ export default function ProductScraperPage() {
   );
 
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
-      <div style={{ flex: "1 1 360px", minWidth: 280 }}>
+    <div className="stack-md wrap" style={{ alignItems: "flex-end" }}>
+      <div className="full-width-mobile" style={{ flex: "1 1 360px", minWidth: 280 }}>
         <Input
           label={t("amazonProductURL")}
           value={productUrl}
           onChange={(e) => setProductUrl(e.target.value)}
-          placeholder="https://www.amazon.co.jp/dp/B0XXXXXXXXX"
+          placeholder={t("amazonUrlPlaceholder") || "https://www.amazon.co.jp/dp/B0XXXXXXXXX"}
           hint={t("mustBeValidAmazonURL")}
         />
       </div>
-      <Button variant="ghost" onClick={applySampleUrl}>
+      <Button variant="ghost" className="full-width-mobile" onClick={applySampleUrl}>
         {t("useSampleUrl") || "Use sample URL"}
       </Button>
     </div>
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button onClick={scrapeProduct} disabled={loading || !productUrl} loading={loading}>
+    <div className="stack-md wrap">
+      <Button className="full-width-mobile" onClick={scrapeProduct} disabled={loading || !productUrl} loading={loading}>
         🔍 {t("scrapeProduct")}
       </Button>
-      <Button onClick={clearForm} variant="ghost">
+      <Button className="full-width-mobile" onClick={clearForm} variant="ghost">
         🔄 {t("clearForm")}
       </Button>
     </div>

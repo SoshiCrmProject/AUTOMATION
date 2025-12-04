@@ -39,8 +39,51 @@ type QueueHealth = { waiting: number; active: number; failed: number; delayed: n
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
+const ensureNumber = (value: number | null | undefined) =>
+  typeof value === "number" && !Number.isNaN(value) ? value : 0;
+
+const formatNumber = (
+  value: number | null | undefined,
+  locale = "en-US",
+  options: Intl.NumberFormatOptions = {}
+) => new Intl.NumberFormat(locale, options).format(ensureNumber(value));
+
+const formatCurrency = (
+  value: number | null | undefined,
+  locale = "en-US",
+  currency: string = "JPY",
+  options: Intl.NumberFormatOptions = {}
+) =>
+  new Intl.NumberFormat(locale, { style: "currency", currency, maximumFractionDigits: 0, ...options }).format(
+    ensureNumber(value)
+  );
+
+const formatDate = (
+  value: string | number | Date,
+  locale = "en-US",
+  options: Intl.DateTimeFormatOptions = {}
+) => new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", ...options }).format(
+  new Date(value)
+);
+
+const formatDateTime = (
+  value: string | number | Date,
+  locale = "en-US",
+  options: Intl.DateTimeFormatOptions = {}
+) =>
+  new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "numeric", ...options }).format(
+    new Date(value)
+  );
+
+const formatTime = (
+  value: string | number | Date,
+  locale = "en-US",
+  options: Intl.DateTimeFormatOptions = {}
+) => new Intl.DateTimeFormat(locale, { hour: "numeric", minute: "numeric", ...options }).format(new Date(value));
+
 export default function Dashboard() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('7d');
   const [showTour, setShowTour] = useState(false);
@@ -59,7 +102,8 @@ export default function Dashboard() {
   const errorCount = ordersArray.filter((o) => o.processingStatus === "FAILED" || o.processingStatus === "SKIPPED" || o.errorItems.length > 0).length;
   const pendingCount = ordersArray.filter((o) => o.processingStatus === "QUEUED" || o.processingStatus === "PROCESSING" || o.processingStatus === "UNPROCESSED").length;
   const totalRevenue = ordersArray.reduce((sum, o) => sum + (o.orderTotal || 0), 0);
-  const successRate = ordersArray.length > 0 ? ((processedCount / ordersArray.length) * 100).toFixed(1) : '0';
+  const successRateValue = ordersArray.length > 0 ? (processedCount / ordersArray.length) * 100 : 0;
+  const successRateDisplay = formatNumber(successRateValue, localeForDisplay, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   // Generate trend data (mock data for now - replace with real API)
   const generateTrendData = () => {
@@ -83,19 +127,19 @@ export default function Dashboard() {
   const heroHighlights = [
     {
       label: t("statusProcessed") || "Processed",
-      value: processedCount.toLocaleString(),
+      value: formatNumber(processedCount, localeForDisplay),
       helper: t("ordersProcessedTodayHelper") || "Completed in the selected window",
       color: "var(--color-success)"
     },
     {
       label: t("statusPending") || "Pending",
-      value: pendingCount.toLocaleString(),
+      value: formatNumber(pendingCount, localeForDisplay),
       helper: t("ordersAwaitingAction") || "Queued or processing",
       color: "var(--color-warning)"
     },
     {
       label: t("statusError") || "Errors",
-      value: errorCount.toLocaleString(),
+      value: formatNumber(errorCount, localeForDisplay),
       helper: t("ordersNeedReview") || "Requires manual review",
       color: "var(--color-error)"
     }
@@ -105,6 +149,30 @@ export default function Dashboard() {
     <Badge variant={health ? "success" : "error"} size="lg">
       {health ? t("systemOperational") || "System operational" : t("systemIssuesDetected") || "Issues detected"}
     </Badge>
+  );
+
+  const quickLinkTargets = useMemo(
+    () => [
+      { label: t("navAnalytics") || "Analytics", href: "/analytics", icon: "📈" },
+      { label: t("navInventory") || "Inventory", href: "/inventory", icon: "📦" },
+      { label: t("navCRM") || "CRM", href: "/crm", icon: "👥" },
+      { label: t("navNotifications") || "Notifications", href: "/notifications", icon: "🔔" }
+    ],
+    [t]
+  );
+
+  const quickActionTargets = useMemo(
+    () => [
+      { label: t("navAnalytics") || "Analytics", href: "/analytics", icon: "📈", variant: undefined },
+      { label: t("navInventory") || "Inventory", href: "/inventory", icon: "📦", variant: undefined },
+      { label: t("navCRM") || "CRM", href: "/crm", icon: "👥", variant: undefined },
+      { label: t("navNotifications") || "Notifications", href: "/notifications", icon: "🔔", variant: undefined },
+      { label: t("navSettings") || "Settings", href: "/settings", icon: "⚙️", variant: "ghost" as const },
+      { label: t("navOrders") || "Orders", href: "/orders", icon: "🛒", variant: "ghost" as const },
+      { label: t("viewErrors") || "Errors", href: "/errors", icon: "⚠️", variant: "ghost" as const },
+      { label: t("viewOperations") || "Operations", href: "/ops", icon: "🔧", variant: "ghost" as const }
+    ],
+    [t]
   );
 
   const heroAside = (
@@ -130,13 +198,13 @@ export default function Dashboard() {
 
   const heroFooter = (
     <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
-      {t("successRate") || "Success rate"}: {successRate}% · {t("totalRevenue") || "Total revenue"}: ¥{totalRevenue.toLocaleString()}
+      {t("successRate") || "Success rate"}: {successRateDisplay}% · {t("totalRevenue") || "Total revenue"}: {formatCurrency(totalRevenue, localeForDisplay)}
     </span>
   );
 
   const heroActions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-      <div style={{ minWidth: 200 }}>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="full-width-mobile" style={{ minWidth: 200 }}>
         <Select
           label={t("timeRange") || "Time range"}
           value={selectedPeriod}
@@ -150,6 +218,7 @@ export default function Dashboard() {
       </div>
       <Button
         type="button"
+        className="full-width-mobile"
         onClick={() => {
           if (typeof window !== "undefined") {
             window.location.reload();
@@ -163,24 +232,47 @@ export default function Dashboard() {
 
   const queueMetrics = [
     { label: t("waiting") || "Waiting", value: queue?.waiting ?? 0, variant: "warning" },
-    { label: t("statusProcessed") || "Active", value: queue?.active ?? 0, variant: "info" },
-    { label: t("statusError") || "Failed", value: queue?.failed ?? 0, variant: "error" },
+    { label: t("active") || "Active", value: queue?.active ?? 0, variant: "info" },
+    { label: t("failed") || "Failed", value: queue?.failed ?? 0, variant: "error" }
   ];
 
+  const getOrderStatusLabel = (status: string) => {
+    switch (status) {
+      case "FULFILLED":
+        return t("statusProcessed") || "Processed";
+      case "FAILED":
+        return t("statusError") || "Error";
+      case "SKIPPED":
+        return t("statusSkipped") || "Skipped";
+      case "QUEUED":
+      case "PROCESSING":
+      case "UNPROCESSED":
+        return t("statusPending") || "Pending";
+      default:
+        return status?.replace(/_/g, " ") || "-";
+    }
+  };
+
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      {queueMetrics.map((metric) => (
-        <Badge key={metric.label} variant={metric.variant as any}>
-          {metric.label}: {metric.value.toLocaleString()}
-        </Badge>
-      ))}
-      <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-        {t("lastUpdated") || "Last updated"}: {new Date().toLocaleTimeString()}
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="stack-sm" style={{ flexWrap: "wrap", gap: 8 }}>
+        {queueMetrics.map((metric) => (
+          <Badge key={metric.label} variant={metric.variant as any}>
+            {metric.label}: {formatNumber(metric.value, localeForDisplay)}
+          </Badge>
+        ))}
+      </div>
+      <span className="full-width-mobile" style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+        {t("lastUpdated") || "Last updated"}: {formatTime(new Date(), localeForDisplay)}
       </span>
-      <div style={{ marginLeft: "auto", display: "flex", gap: 8, flexWrap: "wrap" }}>
+      <div
+        className="stack-sm full-width-mobile"
+        style={{ marginLeft: "auto", flexWrap: "wrap", gap: 8, justifyContent: "flex-end" }}
+      >
         <Button
           type="button"
           variant="ghost"
+          className="full-width-mobile"
           onClick={() => {
             if (typeof window !== "undefined") {
               window.open("/ops", "_self");
@@ -192,6 +284,7 @@ export default function Dashboard() {
         <Button
           type="button"
           variant="ghost"
+          className="full-width-mobile"
           onClick={() => {
             if (typeof window !== "undefined") {
               window.open("/errors", "_self");
@@ -216,7 +309,7 @@ export default function Dashboard() {
           {queueMetrics.map((metric) => (
             <div key={metric.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{metric.label}</span>
-              <Badge variant={metric.variant as any}>{metric.value.toLocaleString()}</Badge>
+              <Badge variant={metric.variant as any}>{formatNumber(metric.value, localeForDisplay)}</Badge>
             </div>
           ))}
         </div>
@@ -224,14 +317,7 @@ export default function Dashboard() {
       <Card hover={false}>
         <CardHeader title={t("quickLinks") || "Quick links"} subtitle={t("dailyWorkflows") || "Daily workflows"} icon="⚡" />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {[{
-            label: "Analytics",
-            href: "/analytics",
-            icon: "📈"
-          },
-          { label: "Inventory", href: "/inventory", icon: "📦" },
-          { label: "CRM", href: "/crm", icon: "👥" },
-          { label: "Notifications", href: "/notifications", icon: "🔔" }].map((link) => (
+          {quickLinkTargets.map((link) => (
             <Button
               key={link.href}
               type="button"
@@ -274,7 +360,7 @@ export default function Dashboard() {
       >
         {health && (
           <Alert variant="success" title={t("systemOperational")}>
-            {t("systemsRunningSmoothly") || "All services operating normally."} {t("queue") || "Queue"}: {queue?.waiting || 0} {t("waiting") || "waiting"}, {queue?.active || 0} {t("active") || "active"}, {queue?.failed || 0} {t("failed") || "failed"}
+            {t("systemsRunningSmoothly") || "All services operating normally."} {t("queue") || "Queue"}: {formatNumber(queue?.waiting ?? 0, localeForDisplay)} {t("waiting") || "waiting"}, {formatNumber(queue?.active ?? 0, localeForDisplay)} {t("active") || "active"}, {formatNumber(queue?.failed ?? 0, localeForDisplay)} {t("failed") || "failed"}
           </Alert>
         )}
 
@@ -285,14 +371,38 @@ export default function Dashboard() {
         )}
 
         {isLoading ? (
-          <LoadingSpinner size="lg" text="Loading dashboard data..." />
+          <LoadingSpinner size="lg" text={t("loadingDashboardData") || "Loading dashboard data..."} />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             <div className="grid grid-4">
-              <StatCard label={t("statusProcessed") || "Processed Orders"} value={processedCount} trend={12} icon="✅" color="success" />
-              <StatCard label={t("totalRevenue") || "Total Revenue"} value={`¥${totalRevenue.toLocaleString()}`} trend={8} icon="💰" color="primary" />
-              <StatCard label={t("statusError") || "Errors"} value={errorCount} trend={-5} icon="⚠️" color="error" />
-              <StatCard label={t("successRate") || "Success Rate"} value={`${successRate}%`} trend={3} icon="📊" color="info" />
+              <StatCard
+                label={t("statusProcessed") || "Processed Orders"}
+                value={formatNumber(processedCount, localeForDisplay)}
+                trend={12}
+                icon="✅"
+                color="success"
+              />
+              <StatCard
+                label={t("totalRevenue") || "Total Revenue"}
+                value={formatCurrency(totalRevenue, localeForDisplay)}
+                trend={8}
+                icon="💰"
+                color="primary"
+              />
+              <StatCard
+                label={t("statusError") || "Errors"}
+                value={formatNumber(errorCount, localeForDisplay)}
+                trend={-5}
+                icon="⚠️"
+                color="error"
+              />
+              <StatCard
+                label={t("successRate") || "Success Rate"}
+                value={`${successRateDisplay}%`}
+                trend={3}
+                icon="📊"
+                color="info"
+              />
             </div>
 
             <div className="grid grid-2">
@@ -311,7 +421,7 @@ export default function Dashboard() {
                 tabs={[
                   {
                     id: 'overview',
-                    label: 'Overview',
+                    label: t("dashboardTabOverview") || 'Overview',
                     icon: '📋',
                     content: (
                       <div className="grid grid-2">
@@ -322,16 +432,16 @@ export default function Dashboard() {
                   },
                   {
                     id: 'recent',
-                    label: 'Recent Orders',
+                    label: t("dashboardTabRecent") || 'Recent Orders',
                     icon: '🛒',
                     badge: ordersArray.length,
                     content: (
                       <Table
                         columns={[
-                          { key: 'shopeeOrderSn', header: 'Order ID', width: '150px' },
+                          { key: 'shopeeOrderSn', header: t("ordersTableOrderId") || 'Order ID', width: '150px' },
                           {
                             key: 'processingStatus',
-                            header: 'Status',
+                            header: t("ordersTableStatus") || 'Status',
                             render: (row) => (
                               <Badge
                                 variant={
@@ -344,26 +454,26 @@ export default function Dashboard() {
                                         : 'info'
                                 }
                               >
-                                {row.processingStatus}
+                                {getOrderStatusLabel(row.processingStatus)}
                               </Badge>
                             ),
                           },
                           {
                             key: 'orderTotal',
-                            header: 'Amount',
-                            render: (row) => `¥${(row.orderTotal || 0).toLocaleString()}`,
+                            header: t("ordersTableAmount") || 'Amount',
+                            render: (row) => formatCurrency(row.orderTotal || 0, localeForDisplay),
                           },
                           {
                             key: 'createdAt',
-                            header: 'Date',
-                            render: (row) => new Date(row.createdAt).toLocaleDateString(),
+                            header: t("ordersTableDate") || 'Date',
+                            render: (row) => formatDate(row.createdAt, localeForDisplay),
                           },
                           {
                             key: 'actions',
-                            header: 'Actions',
+                            header: t("ordersTableActions") || 'Actions',
                             render: (row) => (
                               <Button size="sm" variant="ghost" onClick={() => setSelectedOrderId(row.id)}>
-                                View
+                                {t("viewOrder") || 'View'}
                               </Button>
                             ),
                           },
@@ -376,34 +486,15 @@ export default function Dashboard() {
                   },
                   {
                     id: 'quick-actions',
-                    label: 'Quick Actions',
+                    label: t("dashboardTabQuickActions") || 'Quick Actions',
                     icon: '⚡',
                     content: (
                       <div className="grid grid-4">
-                        <Link href="/analytics">
-                          <Button fullWidth>📈 Analytics</Button>
-                        </Link>
-                        <Link href="/inventory">
-                          <Button fullWidth>📦 Inventory</Button>
-                        </Link>
-                        <Link href="/crm">
-                          <Button fullWidth>👥 CRM</Button>
-                        </Link>
-                        <Link href="/notifications">
-                          <Button fullWidth>🔔 Notifications</Button>
-                        </Link>
-                        <Link href="/settings">
-                          <Button fullWidth variant="ghost">⚙️ Settings</Button>
-                        </Link>
-                        <Link href="/orders">
-                          <Button fullWidth variant="ghost">🛒 Orders</Button>
-                        </Link>
-                        <Link href="/errors">
-                          <Button fullWidth variant="ghost">⚠️ Errors</Button>
-                        </Link>
-                        <Link href="/ops">
-                          <Button fullWidth variant="ghost">🔧 Operations</Button>
-                        </Link>
+                        {quickActionTargets.map((link) => (
+                          <Link href={link.href} key={link.href}>
+                            <Button fullWidth variant={link.variant}>{`${link.icon} ${link.label}`}</Button>
+                          </Link>
+                        ))}
                       </div>
                     ),
                   },
@@ -418,17 +509,17 @@ export default function Dashboard() {
         <Modal
           isOpen={!!selectedOrderId}
           onClose={() => setSelectedOrderId(null)}
-          title={`Order Details: ${selectedOrder.shopeeOrderSn || selectedOrder.id}`}
+          title={`${t("orderDetailsTitle") || "Order details"}: ${selectedOrder.shopeeOrderSn || selectedOrder.id}`}
           size="lg"
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
             <div className="grid grid-2">
               <div>
-                <label className="label">Order ID</label>
+                <label className="label">{t("ordersTableOrderId") || "Order ID"}</label>
                 <p style={{ margin: '4px 0', fontWeight: 600 }}>{selectedOrder.shopeeOrderSn || selectedOrder.id}</p>
               </div>
               <div>
-                <label className="label">Status</label>
+                <label className="label">{t("ordersTableStatus") || "Status"}</label>
                 <Badge variant={
                   selectedOrder.processingStatus === 'FULFILLED' ? 'success' :
                   selectedOrder.processingStatus === 'FAILED' ? 'error' : 'warning'
@@ -437,26 +528,26 @@ export default function Dashboard() {
                 </Badge>
               </div>
               <div>
-                <label className="label">Amount</label>
+                <label className="label">{t("orderAmountLabel") || "Amount"}</label>
                 <p style={{ margin: '4px 0', fontWeight: 600, fontSize: '18px', color: 'var(--color-primary)' }}>
-                  ¥{(selectedOrder.orderTotal || 0).toLocaleString()}
+                  {formatCurrency(selectedOrder.orderTotal || 0, localeForDisplay)}
                 </p>
               </div>
               <div>
-                <label className="label">Date</label>
-                <p style={{ margin: '4px 0' }}>{new Date(selectedOrder.createdAt).toLocaleString()}</p>
+                <label className="label">{t("orderDateLabel") || "Date"}</label>
+                <p style={{ margin: '4px 0' }}>{formatDateTime(selectedOrder.createdAt, localeForDisplay)}</p>
               </div>
             </div>
 
             {selectedOrder.amazonOrder && (
               <Alert variant="success" title={t("amazonOrder")}>
-                Amazon Order ID: {selectedOrder.amazonOrder.amazonOrderId || 'Processing...'}
+                {t("amazonOrderId") || "Amazon Order ID"}: {selectedOrder.amazonOrder.amazonOrderId || t("processingPlaceholder") || 'Processing...'}
               </Alert>
             )}
 
             {selectedOrder.errorItems && selectedOrder.errorItems.length > 0 && (
               <Alert variant="error" title={t("errorsDetected")}>
-                {selectedOrder.errorItems.length} error(s) found for this order
+                {t("errorsFoundForOrder", { count: selectedOrder.errorItems.length }) || `${selectedOrder.errorItems.length} error(s) found for this order`}
               </Alert>
             )}
           </div>

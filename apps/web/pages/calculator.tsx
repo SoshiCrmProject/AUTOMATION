@@ -20,18 +20,27 @@ type BadgeTone = "info" | "success" | "warning" | "error" | "default";
 
 const safeNumber = (value: number | null | undefined) => (typeof value === "number" && !Number.isNaN(value) ? value : 0);
 
-const formatCurrency = (value: number | null | undefined, fractionDigits = 0) => {
+const formatCurrency = (value: number | null | undefined, fractionDigits = 0, locale = "en-US") => {
   const amount = safeNumber(value);
-  return `¥${amount.toLocaleString("en-US", {
+  return new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: "JPY",
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
-  })}`;
+  }).format(amount);
 };
 
-const formatPercent = (value: number | null | undefined) => `${safeNumber(value).toFixed(2)}%`;
+const formatPercent = (value: number | null | undefined, locale = "en-US") => {
+  const amount = safeNumber(value);
+  return `${amount.toLocaleString(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  })}%`;
+};
 
 export default function ProfitCalculatorPage() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProfitResult | null>(null);
   
@@ -82,7 +91,7 @@ export default function ProfitCalculatorPage() {
     setIncludeDomesticShipping(true);
     setDomesticShippingCost(650);
     setResult(null);
-    pushToast("Sample scenario applied", "success");
+    pushToast(t("sampleScenarioApplied") || "Sample scenario applied", "success");
   };
 
   const openDocumentation = () => {
@@ -141,7 +150,7 @@ export default function ProfitCalculatorPage() {
         ? result.isViable
           ? t("profitableOrder") || "Profitable scenario"
           : t("notProfitableWithSettings") || "Needs adjustments"
-        : "Awaiting simulation"}
+        : t("profitCalculatorAwaiting") || "Awaiting simulation"}
     </Badge>
   );
 
@@ -150,18 +159,20 @@ export default function ProfitCalculatorPage() {
       {[
         {
           label: t("netProfit") || "Net profit",
-          value: result ? formatCurrency(result.profit, 0) : formatCurrency(0, 0),
+          value: result ? formatCurrency(result.profit, 0, localeForDisplay) : formatCurrency(0, 0, localeForDisplay),
           helper: result
             ? result.isViable
               ? t("profitableOrder") || "Automation ready"
               : t("notProfitableWithSettings") || "Outside guardrails"
-            : "No calculation yet",
+            : t("profitCalculatorNoCalculation") || "No calculation yet",
           color: result ? (result.isViable ? "var(--color-success)" : "var(--color-error)") : "var(--color-info)"
         },
         {
           label: t("profitMargin") || "Profit margin",
-          value: result ? formatPercent(result.profitMargin) : formatPercent(0),
-          helper: includePoints ? (t("includeAmazonPointsInProfit") || "Amazon points applied") : "Amazon points ignored",
+          value: result ? formatPercent(result.profitMargin, localeForDisplay) : formatPercent(0, localeForDisplay),
+          helper: includePoints
+            ? t("includeAmazonPointsInProfit") || "Amazon points included"
+            : t("amazonPointsIgnored") || "Amazon points ignored",
           color: "var(--color-primary)"
         }
       ].map((stat) => (
@@ -190,33 +201,44 @@ export default function ProfitCalculatorPage() {
   );
 
   const heroActions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" variant="ghost" onClick={applySampleScenario}>
-        🧪 Use sample data
+    <div className="stack-md wrap">
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={applySampleScenario}>
+        🧪 {t("useSampleData") || "Use sample data"}
       </Button>
-      <Button type="button" variant="ghost" onClick={openDocumentation}>
-        📘 Troubleshooting guide
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={openDocumentation}>
+        📘 {t("openTroubleshootingGuide") || "Troubleshooting guide"}
       </Button>
     </div>
   );
 
+  const lastRunSummary = result
+    ? t("lastRunSummary", {
+        profit: formatCurrency(result.profit, 0, localeForDisplay),
+        margin: formatPercent(result.profitMargin, localeForDisplay)
+      })
+    : t("profitCalculatorNoCalculation") || "No calculation yet";
+
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <Badge variant={includePoints ? "success" : "warning"} size="sm">
-        {includePoints ? "Amazon points included" : "Amazon points ignored"}
-      </Badge>
-      <Badge variant={includeDomesticShipping ? "info" : "default"} size="sm">
-        {includeDomesticShipping ? `${t("domesticShippingJPY")}: ${formatCurrency(domesticShippingCost, 0)}` : "Domestic shipping excluded"}
-      </Badge>
-      <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
-        {result ? `Last run → ${formatCurrency(result.profit, 0)} (${formatPercent(result.profitMargin)})` : "No calculation yet"}
-      </span>
-      <div style={{ marginLeft: "auto", display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Button type="button" variant="ghost" onClick={clearForm}>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="stack-sm full-width-mobile" style={{ flexWrap: "wrap", alignItems: "center" }}>
+        <Badge variant={includePoints ? "success" : "warning"} size="sm">
+          {includePoints
+            ? t("pointsIncludedBadge") || "Amazon points included"
+            : t("pointsExcludedBadge") || "Amazon points ignored"}
+        </Badge>
+        <Badge variant={includeDomesticShipping ? "info" : "default"} size="sm">
+          {includeDomesticShipping
+            ? `${t("domesticShippingJPY")}: ${formatCurrency(domesticShippingCost, 0, localeForDisplay)}`
+            : t("domesticShippingExcluded") || "Domestic shipping excluded"}
+        </Badge>
+        <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{lastRunSummary}</span>
+      </div>
+      <div className="stack-sm full-width-mobile" style={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <Button type="button" variant="ghost" className="full-width-mobile" onClick={clearForm}>
           🧼 {t("clearForm")}
         </Button>
-        <Button type="button" onClick={calculateProfit} disabled={loading}>
-          {loading ? "Calculating..." : `⚡ ${t("calculateProfit")}`}
+        <Button type="button" className="full-width-mobile" onClick={calculateProfit} disabled={loading}>
+          {loading ? t("calculating") || "Calculating..." : `⚡ ${t("calculateProfit")}`}
         </Button>
       </div>
     </div>
@@ -230,18 +252,22 @@ export default function ProfitCalculatorPage() {
 
   const simulationHighlights: Array<{ label: string; value: string; variant: BadgeTone }> = [
     {
-      label: "Points mode",
-      value: includePoints ? "Included" : "Ignored",
+      label: t("pointsModeLabel") || "Points mode",
+      value: includePoints
+        ? t("pointsModeIncluded") || "Included"
+        : t("pointsModeIgnored") || "Ignored",
       variant: includePoints ? "success" : "warning"
     },
     {
-      label: "Domestic shipping",
-      value: includeDomesticShipping ? formatCurrency(domesticShippingCost, 0) : "Excluded",
+      label: t("domesticShippingLabel") || "Domestic shipping",
+      value: includeDomesticShipping
+        ? formatCurrency(domesticShippingCost, 0, localeForDisplay)
+        : t("domesticShippingExcluded") || "Excluded",
       variant: includeDomesticShipping ? "info" : "default"
     },
     {
-      label: "Latest profit",
-      value: result ? formatCurrency(result.profit, 0) : "—",
+      label: t("latestProfitLabel") || "Latest profit",
+      value: result ? formatCurrency(result.profit, 0, localeForDisplay) : "—",
       variant: result ? (result.isViable ? "success" : "warning") : "default"
     }
   ];
@@ -249,7 +275,11 @@ export default function ProfitCalculatorPage() {
   const sidebar = (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <Card hover={false}>
-        <CardHeader title="Simulation status" subtitle="Quick health indicators" icon="🎯" />
+        <CardHeader
+          title={t("simulationStatusTitle") || "Simulation status"}
+          subtitle={t("simulationStatusSubtitle") || "Quick health indicators"}
+          icon="🎯"
+        />
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {simulationHighlights.map((item) => (
             <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -260,24 +290,34 @@ export default function ProfitCalculatorPage() {
         </div>
       </Card>
       <Card hover={false}>
-        <CardHeader title="Automation tips" subtitle="Stay within guardrails" icon="💡" />
+        <CardHeader
+          title={t("automationTipsTitle") || "Automation tips"}
+          subtitle={t("automationTipsSubtitle") || "Stay within guardrails"}
+          icon="💡"
+        />
         <ul style={{ margin: 0, paddingLeft: 18, display: "flex", flexDirection: "column", gap: 8, color: "var(--color-text-muted)", fontSize: 13 }}>
-          <li>Keep profit margin above 10% before scheduling auto-fulfillment.</li>
-          <li>Apply domestic shipping only when it exceeds ¥400 to avoid noise.</li>
-          <li>Leverage Amazon points for high-volume SKUs to offset fees.</li>
+          {[t("automationTipMargin") || "Keep profit margin above 10% before scheduling auto-fulfillment.",
+            t("automationTipShipping") || "Apply domestic shipping only when it exceeds ¥400 to avoid noise.",
+            t("automationTipPoints") || "Leverage Amazon points for high-volume SKUs to offset fees."].map((tip) => (
+              <li key={tip}>{tip}</li>
+            ))}
         </ul>
       </Card>
       <Card hover={false}>
-        <CardHeader title="Shortcuts" subtitle="Common workflows" icon="⚡" />
+        <CardHeader
+          title={t("calculatorShortcutsTitle") || "Shortcuts"}
+          subtitle={t("calculatorShortcutsSubtitle") || "Common workflows"}
+          icon="⚡"
+        />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           <Button type="button" variant="ghost" onClick={() => navigateTo("/orders")}>
-            📦 Go to orders
+            📦 {t("navOrders") || "Go to orders"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => navigateTo("/notifications")}>
-            🔔 Notification rules
+            🔔 {t("navNotifications") || "Notification rules"}
           </Button>
           <Button type="button" variant="ghost" onClick={() => navigateTo("/pricing")}>
-            💹 Tune pricing rules
+            💹 {t("tunePricingRules") || "Tune pricing rules"}
           </Button>
         </div>
       </Card>
@@ -291,7 +331,7 @@ export default function ProfitCalculatorPage() {
         activeHref="/calculator"
         title={`💰 ${t("profitCalculatorTitle")}`}
         description={t("profitCalculatorSubtitle") || "Estimate profitability before you fulfill."}
-        eyebrow="Financial guardrails"
+        eyebrow={t("profitCalculatorEyebrow") || "Financial guardrails"}
         heroBadge={heroBadge}
         heroAside={heroAside}
         heroFooter={heroFooter}
@@ -420,17 +460,21 @@ export default function ProfitCalculatorPage() {
             </Card>
 
             <Card>
-              <CardHeader title="📌 Recent insights" subtitle="Guardrails that mattered last run" icon="📎" />
+              <CardHeader
+                title={`📌 ${t("recentInsightsTitle") || "Recent insights"}`}
+                subtitle={t("recentInsightsSubtitle") || "Guardrails that mattered last run"}
+                icon="📎"
+              />
               <div style={{ padding: "0 24px 24px", display: "grid", gap: 16 }}>
                 <div>
-                  <span style={{ fontSize: 12, color: "var(--color-text-muted)", textTransform: "uppercase" }}>Shopee revenue</span>
-                  <div style={{ fontSize: 22, fontWeight: 700 }}>{result ? formatCurrency(result.shopeeTotal, 0) : formatCurrency(0, 0)}</div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-light)" }}>Checkout total captured from Shopee.</p>
+                  <span style={{ fontSize: 12, color: "var(--color-text-muted)", textTransform: "uppercase" }}>{t("shopeeRevenueLabel") || "Shopee revenue"}</span>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{result ? formatCurrency(result.shopeeTotal, 0, localeForDisplay) : formatCurrency(0, 0, localeForDisplay)}</div>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-light)" }}>{t("shopeeRevenueHelper") || "Checkout total captured from Shopee."}</p>
                 </div>
                 <div>
-                  <span style={{ fontSize: 12, color: "var(--color-text-muted)", textTransform: "uppercase" }}>Amazon spend</span>
-                  <div style={{ fontSize: 22, fontWeight: 700 }}>{result ? formatCurrency(result.amazonTotal, 0) : formatCurrency(0, 0)}</div>
-                  <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-light)" }}>Product + shipping + tax.</p>
+                  <span style={{ fontSize: 12, color: "var(--color-text-muted)", textTransform: "uppercase" }}>{t("amazonSpendLabel") || "Amazon spend"}</span>
+                  <div style={{ fontSize: 22, fontWeight: 700 }}>{result ? formatCurrency(result.amazonTotal, 0, localeForDisplay) : formatCurrency(0, 0, localeForDisplay)}</div>
+                  <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-light)" }}>{t("amazonSpendHelper") || "Product + shipping + tax."}</p>
                 </div>
               </div>
             </Card>
@@ -446,11 +490,11 @@ export default function ProfitCalculatorPage() {
               {!result ? (
                 <EmptyState
                   icon="🧮"
-                  title="No calculation yet"
-                  description="Fill out the Shopee + Amazon inputs, then run the simulator to see projected profit."
+                  title={t("profitCalculatorNoCalculation") || "No calculation yet"}
+                  description={t("profitCalculatorEmptyDescription") || "Fill out the Shopee + Amazon inputs, then run the simulator to see projected profit."}
                   action={
                     <Button type="button" onClick={calculateProfit} disabled={loading}>
-                      {loading ? "Calculating..." : `⚡ ${t("calculateProfit")}`}
+                      {loading ? t("calculating") || "Calculating..." : `⚡ ${t("calculateProfit")}`}
                     </Button>
                   }
                 />
@@ -470,7 +514,7 @@ export default function ProfitCalculatorPage() {
                       <div>
                         <span style={{ fontSize: 13, color: "var(--color-text-muted)", textTransform: "uppercase" }}>{t("netProfit")}</span>
                         <div style={{ fontSize: 40, fontWeight: 900, color: result.isViable ? "var(--color-success)" : "var(--color-error)", lineHeight: 1 }}>
-                          {formatCurrency(result.profit, 0)}
+                          {formatCurrency(result.profit, 0, localeForDisplay)}
                         </div>
                       </div>
                       <Badge variant={result.isViable ? "success" : "warning"} size="lg">
@@ -479,8 +523,8 @@ export default function ProfitCalculatorPage() {
                     </div>
                     <p style={{ margin: "12px 0 0", fontSize: 14, color: "var(--color-text-muted)" }}>
                       {result.isViable
-                        ? "This scenario meets automation guardrails."
-                        : "Adjust inputs or guardrails before handing off to automation."}
+                        ? t("scenarioMeetsGuardrails") || "This scenario meets automation guardrails."
+                        : t("scenarioAdjustInputs") || "Adjust inputs or guardrails before handing off to automation."}
                     </p>
                   </div>
 
@@ -492,51 +536,51 @@ export default function ProfitCalculatorPage() {
                     }}
                   >
                     <div style={{ background: "var(--color-elevated)", borderRadius: "var(--radius-lg)", padding: 16 }}>
-                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>Margin</p>
-                      <strong style={{ fontSize: 28 }}>{formatPercent(result.profitMargin)}</strong>
-                      <small style={{ display: "block", color: "var(--color-text-light)" }}>Target ≥ 10%</small>
+                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>{t("marginLabel") || "Margin"}</p>
+                      <strong style={{ fontSize: 28 }}>{formatPercent(result.profitMargin, localeForDisplay)}</strong>
+                      <small style={{ display: "block", color: "var(--color-text-light)" }}>{t("marginHelper") || "Target ≥ 10%"}</small>
                     </div>
                     <div style={{ background: "var(--color-elevated)", borderRadius: "var(--radius-lg)", padding: 16 }}>
-                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>Shopee revenue</p>
-                      <strong style={{ fontSize: 24 }}>{formatCurrency(result.shopeeTotal, 0)}</strong>
-                      <small style={{ display: "block", color: "var(--color-text-light)" }}>Paid by customer</small>
+                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>{t("shopeeRevenueLabel") || "Shopee revenue"}</p>
+                      <strong style={{ fontSize: 24 }}>{formatCurrency(result.shopeeTotal, 0, localeForDisplay)}</strong>
+                      <small style={{ display: "block", color: "var(--color-text-light)" }}>{t("shopeeRevenueHelperShort") || "Paid by customer"}</small>
                     </div>
                     <div style={{ background: "var(--color-elevated)", borderRadius: "var(--radius-lg)", padding: 16 }}>
-                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>Amazon spend</p>
-                      <strong style={{ fontSize: 24 }}>{formatCurrency(result.amazonTotal, 0)}</strong>
-                      <small style={{ display: "block", color: "var(--color-text-light)" }}>Cost of fulfillment</small>
+                      <p style={{ margin: 0, fontSize: 12, textTransform: "uppercase", color: "var(--color-text-muted)" }}>{t("amazonSpendLabel") || "Amazon spend"}</p>
+                      <strong style={{ fontSize: 24 }}>{formatCurrency(result.amazonTotal, 0, localeForDisplay)}</strong>
+                      <small style={{ display: "block", color: "var(--color-text-light)" }}>{t("amazonSpendHelperShort") || "Cost of fulfillment"}</small>
                     </div>
                   </div>
 
                   <div style={{ borderTop: "1px solid var(--color-border)", paddingTop: 20 }}>
-                    <h4 style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-muted)", letterSpacing: 0.5 }}>Cost breakdown</h4>
+                    <h4 style={{ fontSize: 13, fontWeight: 700, color: "var(--color-text-muted)", letterSpacing: 0.5 }}>{t("costBreakdownTitle") || "Cost breakdown"}</h4>
                     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                       {[{
-                        label: "Shopee revenue",
-                        value: formatCurrency(result.shopeeTotal, 0),
+                        label: t("shopeeRevenueLabel") || "Shopee revenue",
+                        value: formatCurrency(result.shopeeTotal, 0, localeForDisplay),
                         positive: true
                       },
                       {
-                        label: "Amazon purchase",
-                        value: formatCurrency(result.amazonTotal, 0),
+                        label: t("costAmazonLabel") || "Amazon purchase",
+                        value: formatCurrency(result.amazonTotal, 0, localeForDisplay),
                         positive: false
                       },
                       {
-                        label: "Platform fees",
-                        value: formatCurrency(result.fees, 0),
+                        label: t("costFeesLabel") || "Platform fees",
+                        value: formatCurrency(result.fees, 0, localeForDisplay),
                         positive: false
                       },
                       result.shipping > 0
                         ? {
-                            label: "Domestic shipping",
-                            value: formatCurrency(result.shipping, 0),
+                            label: t("costDomesticShippingLabel") || "Domestic shipping",
+                            value: formatCurrency(result.shipping, 0, localeForDisplay),
                             positive: false
                           }
                         : null,
                       includePoints && amazonPoints > 0
                         ? {
-                            label: "Amazon points credit",
-                            value: formatCurrency(amazonPoints, 0),
+                            label: t("costPointsCreditLabel") || "Amazon points credit",
+                            value: formatCurrency(amazonPoints, 0, localeForDisplay),
                             positive: true
                           }
                         : null].filter(Boolean).map((line) => (
@@ -554,21 +598,28 @@ export default function ProfitCalculatorPage() {
                     </div>
                   </div>
 
-                  <Alert variant={result.isViable ? "success" : "warning"} title={result.isViable ? "Automation ready" : "Manual review recommended"}>
+                  <Alert
+                    variant={result.isViable ? "success" : "warning"}
+                    title={result.isViable ? t("automationReadyTitle") || "Automation ready" : t("manualReviewTitle") || "Manual review recommended"}
+                  >
                     {result.isViable
-                      ? "You can safely queue this order for automatic fulfillment."
-                      : "Tweak inputs or guardrails before scheduling automation."}
+                      ? t("automationReadyBody") || "You can safely queue this order for automatic fulfillment."
+                      : t("manualReviewBody") || "Tweak inputs or guardrails before scheduling automation."}
                   </Alert>
                 </div>
               )}
             </Card>
 
             <Card>
-              <CardHeader title="Operator notes" subtitle="Document quick assumptions" icon="📝" />
+              <CardHeader
+                title={t("operatorNotesTitle") || "Operator notes"}
+                subtitle={t("operatorNotesSubtitle") || "Document quick assumptions"}
+                icon="📝"
+              />
               <div style={{ padding: "0 24px 24px" }}>
                 <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-light)" }}>
-                  Capture why you overrode certain costs before handing off to teammates. Keeping a short log improves auditability and
-                  keeps the automation guardrails trustworthy.
+                  {t("operatorNotesBody") ||
+                    "Capture why you overrode certain costs before handing off to teammates. Keeping a short log improves auditability and keeps the automation guardrails trustworthy."}
                 </p>
               </div>
             </Card>

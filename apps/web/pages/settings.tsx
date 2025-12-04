@@ -32,6 +32,19 @@ type Settings = {
   reviewBandPercent: number;
 };
 
+type CredentialStatus = {
+  status: string;
+  lastValidatedAt: string | null;
+  error: string | null;
+};
+
+type CredentialHealth = {
+  shopId: string;
+  shopName: string;
+  shopee: CredentialStatus;
+  amazon: CredentialStatus;
+};
+
 export default function SettingsPage() {
   const { t } = useTranslation("common");
   const [showTour, setShowTour] = useState(false);
@@ -57,6 +70,7 @@ export default function SettingsPage() {
   const [amazonEmail, setAmazonEmail] = useState("");
   const [amazonPassword, setAmazonPassword] = useState("");
   const [amazonShippingLabel, setAmazonShippingLabel] = useState("Shopee Warehouse");
+  const [healthCheckLoading, setHealthCheckLoading] = useState(false);
   
   // Alert webhook
   const [alertWebhookUrl, setAlertWebhookUrl] = useState("");
@@ -77,6 +91,11 @@ export default function SettingsPage() {
   const { data: shops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
   const { data: shopeeCredentials } = useSWR("/credentials/shopee", fetcher, { shouldRetryOnError: false });
   const { data: amazonCredentials } = useSWR("/credentials/amazon", fetcher, { shouldRetryOnError: false });
+  const { data: credentialHealth, error: credentialHealthError, mutate: refreshCredentialHealth } = useSWR<CredentialHealth[]>(
+    "/ops/credential-health",
+    fetcher,
+    { shouldRetryOnError: false, revalidateOnFocus: false }
+  );
 
   useEffect(() => {
     if (settings) {
@@ -217,6 +236,54 @@ export default function SettingsPage() {
       setLoading(false);
     }
   };
+
+  const handleRunHealthCheck = async () => {
+    setHealthCheckLoading(true);
+    try {
+      await api.post("/ops/credential-health");
+      pushToast(t("healthCheckQueued") || "Credential health check queued", "success");
+      refreshCredentialHealth();
+    } catch (error: any) {
+      pushToast(error.response?.data?.error || t("healthCheckFailed") || "Failed to queue health check", "error");
+    } finally {
+      setHealthCheckLoading(false);
+    }
+  };
+
+  const statusVariant = (status: string) => {
+    switch ((status || "").toLowerCase()) {
+      case "healthy":
+        return "success" as const;
+      case "failed":
+        return "error" as const;
+      case "pending":
+      case "unknown":
+        return "warning" as const;
+      case "missing":
+        return "default" as const;
+      default:
+        return "info" as const;
+    }
+  };
+
+  const formatStatusLabel = (status: string) => {
+    const normalized = (status || "unknown").toLowerCase();
+    switch (normalized) {
+      case "healthy":
+        return t("statusHealthy") || "Healthy";
+      case "failed":
+        return t("statusFailed") || "Failed";
+      case "pending":
+        return t("statusPending") || "Pending";
+      case "missing":
+        return t("statusMissing") || "Missing";
+      default:
+        return t("statusUnknown") || "Unknown";
+    }
+  };
+
+  const formatTimestamp = (value?: string | null) =>
+    value ? new Date(value).toLocaleString() : t("neverValidated") || "Never validated";
 
   const shopOptions = useMemo(
     () =>
@@ -405,10 +472,84 @@ export default function SettingsPage() {
       </div>
     </Card>
   );
+  const credentialHealthCard = (
+    <Card hover={false}>
+      <CardHeader
+        title={t("credentialHealthTitle") || "Credential health"}
+        subtitle={t("credentialHealthSubtitle") || "Verify Shopee and Amazon integrations"}
+        icon="🩺"
+      />
+      <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={handleRunHealthCheck}
+          disabled={healthCheckLoading}
+        >
+          {healthCheckLoading ? "⏳ " : "🩻 "}
+          {healthCheckLoading
+            ? t("healthCheckRunning") || "Running checks..."
+            : t("runHealthCheck") || "Run health check"}
+        </Button>
+        {credentialHealthError && (
+          <Alert variant="error" title={t("healthCheckLoadFailed") || "Failed to load health status"}>
+            {credentialHealthError.message}
+          </Alert>
+        )}
+        {credentialHealth?.length ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {credentialHealth.map((entry) => {
+              const combinedStatus =
+                entry.shopee.status === "healthy" && entry.amazon.status === "healthy"
+                  ? "healthy"
+                  : entry.shopee.status === "failed" || entry.amazon.status === "failed"
+                  ? "failed"
+                  : "pending";
+              return (
+                <div
+                  key={entry.shopId}
+                  style={{
+                    border: "1px solid var(--color-border)",
+                    borderRadius: "var(--radius-md)",
+                    padding: 12,
+                    background: "var(--color-surface)"
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <strong>{entry.shopName || `Shop ${entry.shopId}`}</strong>
+                    <Badge variant={statusVariant(combinedStatus)}>{formatStatusLabel(combinedStatus)}</Badge>
+                  </div>
+                  {[{ label: "Shopee", status: entry.shopee }, { label: "Amazon", status: entry.amazon }].map((row) => (
+                    <div key={row.label} style={{ marginBottom: 8 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                        <span style={{ color: "var(--color-text-muted)" }}>{row.label}</span>
+                        <Badge variant={statusVariant(row.status.status)}>{formatStatusLabel(row.status.status)}</Badge>
+                      </div>
+                      <small style={{ color: "var(--color-text-muted)" }}>
+                        {formatTimestamp(row.status.lastValidatedAt)}
+                      </small>
+                      {row.status.error && (
+                        <p style={{ margin: "4px 0 0", color: "var(--color-error)", fontSize: 12 }}>{row.status.error}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <Alert variant="warning">
+            {t("noCredentialHealthData") || "No credential data available yet."}
+          </Alert>
+        )}
+      </div>
+    </Card>
+  );
 
   const sidebar = (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       {automationSummary}
+      {credentialHealthCard}
       {checklistCard}
       {helpCard}
     </div>

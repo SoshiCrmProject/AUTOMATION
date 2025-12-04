@@ -58,6 +58,9 @@ const redisConnection = {
     enableReadyCheck: false
 };
 const orderQueue = new bullmq_1.Queue("orders", { connection: redisConnection });
+const orderQueueEvents = new bullmq_1.QueueEvents("orders", { connection: redisConnection });
+orderQueueEvents.on("error", (err) => console.error("Queue events error", err));
+orderQueueEvents.waitUntilReady().catch((err) => console.error("Queue events init failed", err));
 const JWT_SECRET = process.env.JWT_SECRET || "change-me";
 const AES_KEY = process.env.AES_SECRET_KEY;
 const HEALTH_TOKEN = process.env.HEALTH_TOKEN;
@@ -73,6 +76,14 @@ async function logAudit(userId, action, detail) {
         data: { userId, action, detail }
     });
 }
+const amazonScrapeLimiter = (0, express_rate_limit_1.default)({
+    windowMs: 60000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => req.userId ?? req.ip ?? "anon",
+    handler: (_req, res) => res.status(429).json({ error: "Amazon scrape rate limit exceeded" })
+});
 function authMiddleware(req, res, next) {
     const header = req.headers.authorization;
     if (!header) {
@@ -647,6 +658,46 @@ app.get("/orders/:id", authMiddleware, asyncHandler(async (req, res) => {
         return res.status(404).json({ error: "Not found" });
     res.json(order);
 }));
+const amazonScrapeSchema = zod_1.z.object({ productUrl: zod_1.z.string().url() });
+async function handleAmazonScrape(req, res) {
+    const parsed = amazonScrapeSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid payload" });
+    }
+    const productUrl = parsed.data.productUrl.trim();
+    if (!/amazon\./i.test(productUrl)) {
+        return res.status(400).json({ error: "URL must be an Amazon listing" });
+    }
+    const job = await orderQueue.add("scrape-preview", { productUrl }, { removeOnComplete: true, removeOnFail: true });
+    const startedAt = Date.now();
+    try {
+        const payload = (await job.waitUntilFinished(orderQueueEvents, 120000));
+        if (!payload) {
+            return res.status(502).json({ error: "Scrape returned no data" });
+        }
+        if (payload.ok) {
+            await logAudit(req.userId, "amazon-scrape", { productUrl, asin: payload.result.asin });
+            return res.json({
+                status: "ok",
+                result: payload.result,
+                durationMs: Date.now() - startedAt,
+                message: "Live Amazon data captured"
+            });
+        }
+        return res.status(422).json({
+            error: payload.error.message,
+            code: payload.error.code,
+            screenshot: payload.error.screenshotPath ?? null
+        });
+    }
+    catch (err) {
+        if (err?.message?.includes("timed out")) {
+            return res.status(504).json({ error: "Amazon scrape timed out" });
+        }
+        console.error("Amazon scrape failed", err);
+        return res.status(502).json({ error: "Unable to scrape Amazon product" });
+    }
+}
 // Queue health
 app.get("/ops/queue", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (_req, res) => {
     const counts = await Promise.all([
@@ -657,15 +708,8 @@ app.get("/ops/queue", authMiddleware, requireRole([client_1.UserRole.ADMIN]), as
     ]);
     res.json({ waiting: counts[0], active: counts[1], failed: counts[2], delayed: counts[3] });
 }));
-// Test scrape enqueue (dry-run)
-app.post("/ops/amazon-test", authMiddleware, asyncHandler(async (req, res) => {
-    const schema = zod_1.z.object({ productUrl: zod_1.z.string().url() });
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success)
-        return res.status(400).json({ error: "Invalid payload" });
-    await orderQueue.add("test-scrape", { userId: req.userId, productUrl: parsed.data.productUrl });
-    res.json({ ok: true });
-}));
+app.post("/ops/amazon-scrape", authMiddleware, amazonScrapeLimiter, asyncHandler(handleAmazonScrape));
+app.post("/ops/amazon-test", authMiddleware, amazonScrapeLimiter, asyncHandler(handleAmazonScrape));
 // Connector/status summary
 app.get("/ops/status", authMiddleware, asyncHandler(async (req, res) => {
     const lastOrder = await prisma.shopeeOrder.findFirst({

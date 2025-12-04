@@ -25,6 +25,23 @@ import {
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
+const ensureNumber = (value: number | null | undefined) =>
+  typeof value === "number" && !Number.isNaN(value) ? value : 0;
+
+const formatNumber = (
+  value: number | null | undefined,
+  locale = "en-US",
+  options: Intl.NumberFormatOptions = {}
+) => new Intl.NumberFormat(locale, options).format(ensureNumber(value));
+
+const formatDate = (
+  value: string | number | Date,
+  locale = "en-US",
+  options: Intl.DateTimeFormatOptions = {}
+) => new Intl.DateTimeFormat(locale, { year: "numeric", month: "short", day: "numeric", ...options }).format(
+  new Date(value)
+);
+
 type ProductInventory = {
   id: string;
   shopId: string;
@@ -69,7 +86,8 @@ type InventoryResponse = {
 };
 
 export default function Inventory() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
   const [shopId, setShopId] = useState<string>("");
   const [showTour, setShowTour] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
@@ -121,8 +139,24 @@ export default function Inventory() {
   const totalAvailable = inventoryData?.stats?._sum?.availableStock || 0;
   const totalReserved = inventoryData?.stats?._sum?.reservedStock || 0;
   const totalProducts = inventoryData?.stats?._count || 0;
+  const inStockCount = inventory.filter((i) => i.status === "IN_STOCK").length;
   const lowStockCount = inventory.filter((i) => i.status === "LOW_STOCK").length;
   const outOfStockCount = inventory.filter((i) => i.status === "OUT_OF_STOCK").length;
+
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "IN_STOCK":
+        return t("inStock") || "In stock";
+      case "LOW_STOCK":
+        return t("lowStock") || "Low stock";
+      case "OUT_OF_STOCK":
+        return t("outOfStock") || "Out of stock";
+      case "DISCONTINUED":
+        return t("discontinued") || "Discontinued";
+      default:
+        return status.replace(/_/g, " ");
+    }
+  };
 
   const handleStockAdjust = async () => {
     if (!selectedProduct || adjustQuantity === 0) return;
@@ -219,7 +253,7 @@ export default function Inventory() {
   const heroBadge = (
     <Badge variant={alerts.length > 0 ? "warning" : "success"}>
       {alerts.length > 0
-        ? `${alerts.length} ${t("activeAlerts") || "alerts"}`
+        ? `${formatNumber(alerts.length, localeForDisplay)} ${t("activeAlerts") || "alerts"}`
         : t("inventorySynced") || "Synced"}
     </Badge>
   );
@@ -234,19 +268,19 @@ export default function Inventory() {
     >
       {[{
         label: t("totalProducts") || "Products",
-        value: shopId ? totalProducts : "--",
+        value: shopId ? formatNumber(totalProducts, localeForDisplay) : "--",
         helper: t("inventoryTotalProductsHelper") || "Tracked listings",
       }, {
         label: t("totalStock") || "Total stock",
-        value: shopId ? totalStock : "--",
+        value: shopId ? formatNumber(totalStock, localeForDisplay) : "--",
         helper: t("inventoryTotalStockHelper") || "Units across warehouses",
       }, {
         label: t("lowStock") || "Low stock",
-        value: shopId ? lowStockCount : "--",
+        value: shopId ? formatNumber(lowStockCount, localeForDisplay) : "--",
         helper: t("inventoryLowStockHelper") || "Below thresholds",
       }, {
         label: t("outOfStock") || "Out of stock",
-        value: shopId ? outOfStockCount : "--",
+        value: shopId ? formatNumber(outOfStockCount, localeForDisplay) : "--",
         helper: t("inventoryOutStockHelper") || "Need urgent reorder",
       }].map((stat) => (
         <div key={stat.label} style={{ padding: 16 }} className="stat-card">
@@ -267,49 +301,72 @@ export default function Inventory() {
   );
 
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <Input
-        placeholder={t("shopID")}
-        value={shopId}
-        onChange={(e) => setShopId(e.target.value)}
-        aria-label={t("shopID")}
-        style={{ flex: "1 1 200px", minWidth: 200 }}
-      />
-      <Input
-        placeholder={t("searchProductOrSKU")}
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        aria-label={t("search") || "Search"}
-        disabled={!shopId}
-        style={{ flex: "1 1 200px", minWidth: 200 }}
-      />
-      <Select
-        value={filterStatus}
-        onChange={(e) => setFilterStatus(e.target.value)}
-        options={[
-          { value: "all", label: t("allStatus") || "All status" },
-          { value: "IN_STOCK", label: t("inStock") || "In stock" },
-          { value: "LOW_STOCK", label: t("lowStock") || "Low stock" },
-          { value: "OUT_OF_STOCK", label: t("outOfStock") || "Out of stock" },
-          { value: "DISCONTINUED", label: t("discontinued") || "Discontinued" },
-        ]}
-        disabled={!shopId}
-        style={{ flex: "0 0 200px", minWidth: 180 }}
-      />
-      <Button type="button" variant="ghost" onClick={() => {
-        setFilterStatus("all");
-        setSearchTerm("");
-      }}>🧼 {t("clearFilters") || "Clear"}</Button>
-      <Button type="button" variant="ghost" onClick={handleRefresh} disabled={!shopId}>🔄 {t("refreshData") || "Refresh"}</Button>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="full-width-mobile" style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          placeholder={t("shopID")}
+          value={shopId}
+          onChange={(e) => setShopId(e.target.value)}
+          aria-label={t("shopID")}
+        />
+      </div>
+      <div className="full-width-mobile" style={{ flex: "1 1 220px", minWidth: 200 }}>
+        <Input
+          placeholder={t("searchProductOrSKU")}
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          aria-label={t("search") || "Search"}
+          disabled={!shopId}
+        />
+      </div>
+      <div className="full-width-mobile" style={{ flex: "0 0 200px", minWidth: 180 }}>
+        <Select
+          value={filterStatus}
+          onChange={(e) => setFilterStatus(e.target.value)}
+          options={[
+            { value: "all", label: t("allStatus") || "All status" },
+            { value: "IN_STOCK", label: t("inStock") || "In stock" },
+            { value: "LOW_STOCK", label: t("lowStock") || "Low stock" },
+            { value: "OUT_OF_STOCK", label: t("outOfStock") || "Out of stock" },
+            { value: "DISCONTINUED", label: t("discontinued") || "Discontinued" },
+          ]}
+          disabled={!shopId}
+        />
+      </div>
+      <div className="stack-sm full-width-mobile" style={{ flexWrap: "wrap", gap: 12, justifyContent: "flex-end" }}>
+        <Button
+          type="button"
+          variant="ghost"
+          className="full-width-mobile"
+          onClick={() => {
+            setFilterStatus("all");
+            setSearchTerm("");
+          }}
+        >
+          🧼 {t("clearFilters") || "Clear"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          className="full-width-mobile"
+          onClick={handleRefresh}
+          disabled={!shopId}
+        >
+          🔄 {t("refreshData") || "Refresh"}
+        </Button>
+      </div>
     </div>
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={() => setShowAddModal(true)} disabled={!shopId}>➕ {t("addProduct") || "Add product"}</Button>
+    <div className="stack-md wrap">
+      <Button type="button" className="full-width-mobile" onClick={() => setShowAddModal(true)} disabled={!shopId}>
+        ➕ {t("addProduct") || "Add product"}
+      </Button>
       <Button
         type="button"
         variant="ghost"
+        className="full-width-mobile"
         onClick={() => {
           if (typeof window !== "undefined" && shopId) {
             window.open(`/api/inventory/export?shopId=${shopId}`, "_blank");
@@ -319,7 +376,9 @@ export default function Inventory() {
       >
         ⬇️ {t("exportCsv") || "Export CSV"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleReplayTour}>🧭 {t("replayTour") || "Replay tour"}</Button>
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleReplayTour}>
+        🧭 {t("replayTour") || "Replay tour"}
+      </Button>
     </div>
   );
 
@@ -343,7 +402,10 @@ export default function Inventory() {
               >
                 <p style={{ margin: 0, fontWeight: 600 }}>{alert.productId}</p>
                 <p style={{ margin: "4px 0", fontSize: 13, color: "var(--color-text-muted)" }}>
-                  {t("inventoryAlertThreshold", { qty: alert.currentQty, threshold: alert.threshold }) || `Qty ${alert.currentQty}/${alert.threshold}`}
+                  {t("inventoryAlertThreshold", {
+                    qty: formatNumber(alert.currentQty, localeForDisplay),
+                    threshold: formatNumber(alert.threshold, localeForDisplay),
+                  }) || `Qty ${formatNumber(alert.currentQty, localeForDisplay)}/${formatNumber(alert.threshold, localeForDisplay)}`}
                 </p>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {!alert.acknowledged && (
@@ -393,7 +455,7 @@ export default function Inventory() {
           )}
 
           {alerts.length > 0 && (
-            <Alert variant="warning" title={`${alerts.length} ${t("lowStockAlerts")}`}>
+            <Alert variant="warning" title={`${formatNumber(alerts.length, localeForDisplay)} ${t("lowStockAlerts")}`}>
               {t("productsNeedAttention")}
             </Alert>
           )}
@@ -414,10 +476,10 @@ export default function Inventory() {
                     gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
                   }}
                 >
-                  <StatCard label={t("totalProducts")} value={totalProducts} icon="📦" color="primary" />
-                  <StatCard label={t("totalStock")} value={totalStock} icon="📊" color="info" />
-                  <StatCard label={t("lowStock")} value={lowStockCount} icon="⚠️" color="warning" />
-                  <StatCard label={t("outOfStock")} value={outOfStockCount} icon="🚫" color="error" />
+                  <StatCard label={t("totalProducts")} value={formatNumber(totalProducts, localeForDisplay)} icon="📦" color="primary" />
+                  <StatCard label={t("totalStock")} value={formatNumber(totalStock, localeForDisplay)} icon="📊" color="info" />
+                  <StatCard label={t("lowStock")} value={formatNumber(lowStockCount, localeForDisplay)} icon="⚠️" color="warning" />
+                  <StatCard label={t("outOfStock")} value={formatNumber(outOfStockCount, localeForDisplay)} icon="🚫" color="error" />
                 </div>
 
                 <Card>
@@ -445,7 +507,9 @@ export default function Inventory() {
                     }].map((meta) => (
                       <div key={meta.label} style={{ textAlign: "center" }}>
                         <p style={{ margin: 0, fontSize: 13, color: "var(--color-text-muted)" }}>{meta.label}</p>
-                        <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: meta.color }}>{meta.value}</p>
+                        <p style={{ margin: 0, fontSize: 28, fontWeight: 800, color: meta.color }}>
+                          {formatNumber(meta.value, localeForDisplay)}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -482,7 +546,7 @@ export default function Inventory() {
                                                 : "info"
                                         }
                                       >
-                                        {row.status.replace("_", " ")}
+                                        {getStatusLabel(row.status)}
                                       </Badge>
                                     ),
                                   },
@@ -497,7 +561,7 @@ export default function Inventory() {
                                           color: row.currentStock <= row.lowStockThreshold ? "var(--color-error)" : "var(--color-text)",
                                         }}
                                       >
-                                        {row.currentStock}
+                                        {formatNumber(row.currentStock, localeForDisplay)}
                                       </span>
                                     ),
                                   },
@@ -505,7 +569,7 @@ export default function Inventory() {
                                     key: "available",
                                     header: t("available"),
                                     width: "100px",
-                                    render: (row) => row.availableStock,
+                                    render: (row) => formatNumber(row.availableStock, localeForDisplay),
                                   },
                                   {
                                     key: "location",
@@ -579,14 +643,21 @@ export default function Inventory() {
                                     key: "currentQty",
                                     header: t("currentStock"),
                                     width: "120px",
-                                    render: (row) => <Badge variant="error">{row.currentQty}</Badge>,
+                                    render: (row) => (
+                                      <Badge variant="error">{formatNumber(row.currentQty, localeForDisplay)}</Badge>
+                                    ),
                                   },
-                                  { key: "threshold", header: t("threshold"), width: "100px" },
+                                  {
+                                    key: "threshold",
+                                    header: t("threshold"),
+                                    width: "100px",
+                                    render: (row) => formatNumber(row.threshold, localeForDisplay),
+                                  },
                                   {
                                     key: "notifiedAt",
                                     header: t("date"),
                                     width: "150px",
-                                    render: (row) => new Date(row.notifiedAt).toLocaleDateString(),
+                                    render: (row) => formatDate(row.notifiedAt, localeForDisplay),
                                   },
                                   {
                                     key: "status",
@@ -639,16 +710,16 @@ export default function Inventory() {
                                 <CardHeader title={t("stockOverview")} icon="📦" />
                                 <div style={{ padding: "16px" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                                    <span>Total Stock</span>
-                                    <strong>{totalStock}</strong>
+                                    <span>{t("totalStock") || "Total stock"}</span>
+                                    <strong>{formatNumber(totalStock, localeForDisplay)}</strong>
                                   </div>
                                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
-                                    <span>Available</span>
-                                    <strong style={{ color: "var(--color-success)" }}>{totalAvailable}</strong>
+                                    <span>{t("availableStock") || "Available"}</span>
+                                    <strong style={{ color: "var(--color-success)" }}>{formatNumber(totalAvailable, localeForDisplay)}</strong>
                                   </div>
                                   <div style={{ display: "flex", justifyContent: "space-between" }}>
-                                    <span>Reserved</span>
-                                    <strong style={{ color: "var(--color-warning)" }}>{totalReserved}</strong>
+                                    <span>{t("reservedStock") || "Reserved"}</span>
+                                    <strong style={{ color: "var(--color-warning)" }}>{formatNumber(totalReserved, localeForDisplay)}</strong>
                                   </div>
                                 </div>
                               </Card>
@@ -657,15 +728,15 @@ export default function Inventory() {
                                 <div style={{ padding: "16px" }}>
                                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                                     <span>{t("inStock")}</span>
-                                    <Badge variant="success">{inventory.filter((i) => i.status === "IN_STOCK").length}</Badge>
+                                    <Badge variant="success">{formatNumber(inStockCount, localeForDisplay)}</Badge>
                                   </div>
                                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                                     <span>{t("lowStock")}</span>
-                                    <Badge variant="warning">{lowStockCount}</Badge>
+                                    <Badge variant="warning">{formatNumber(lowStockCount, localeForDisplay)}</Badge>
                                   </div>
                                   <div style={{ display: "flex", justifyContent: "space-between" }}>
                                     <span>{t("outOfStock")}</span>
-                                    <Badge variant="error">{outOfStockCount}</Badge>
+                                    <Badge variant="error">{formatNumber(outOfStockCount, localeForDisplay)}</Badge>
                                   </div>
                                 </div>
                               </Card>
@@ -675,8 +746,8 @@ export default function Inventory() {
                                 ? t("inventoryInGoodShape")
                                 : (
                                   <>
-                                    {outOfStockCount > 0 && `${outOfStockCount} ${t("productsOutOfStock")} `}
-                                    {lowStockCount > 0 && `${lowStockCount} ${t("productsRunningLow")} `}
+                                    {outOfStockCount > 0 && `${formatNumber(outOfStockCount, localeForDisplay)} ${t("productsOutOfStock")} `}
+                                    {lowStockCount > 0 && `${formatNumber(lowStockCount, localeForDisplay)} ${t("productsRunningLow")} `}
                                     {t("considerRestocking")}
                                   </>
                                 )}
@@ -713,7 +784,7 @@ export default function Inventory() {
           <div style={{ padding: "24px" }}>
             <h4 style={{ marginTop: 0, marginBottom: "16px" }}>{selectedProduct.productName}</h4>
             <p style={{ color: "var(--color-text-muted)", marginBottom: "24px" }}>
-              {t("currentStock")}: <strong>{selectedProduct.currentStock}</strong>
+              {t("currentStock")}: <strong>{formatNumber(selectedProduct.currentStock, localeForDisplay)}</strong>
             </p>
 
             <Select
@@ -733,7 +804,10 @@ export default function Inventory() {
               value={adjustQuantity}
               onChange={(e) => setAdjustQuantity(Number(e.target.value))}
               placeholder={t("enterQuantity")}
-              hint={`${t("newStockWillBe")}: ${selectedProduct.currentStock + (adjustType === "OUT" ? -adjustQuantity : adjustQuantity)}`}
+              hint={`${t("newStockWillBe")}: ${formatNumber(
+                selectedProduct.currentStock + (adjustType === "OUT" ? -adjustQuantity : adjustQuantity),
+                localeForDisplay
+              )}`}
             />
 
             <Input
@@ -775,13 +849,13 @@ export default function Inventory() {
                 label={`${t("shopeeItemID")} *`}
                 value={newProduct.shopeeItemId}
                 onChange={(e) => setNewProduct({ ...newProduct, shopeeItemId: e.target.value })}
-                placeholder="e.g., 123456789"
+                placeholder={t("shopeeItemIdExample")}
               />
               <Input
                 label={`${t("sku")} *`}
                 value={newProduct.sku}
                 onChange={(e) => setNewProduct({ ...newProduct, sku: e.target.value })}
-                placeholder="e.g., PROD-001"
+                placeholder={t("skuExample")}
               />
               <Input
                 label={`${t("productName")} *`}

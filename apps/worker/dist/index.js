@@ -54,6 +54,12 @@ new bullmq_1.Worker(queueName, async (job) => {
             }
         }
     }
+    if (job.name === "verify-credentials") {
+        return verifyCredentials(job.data.shopId);
+    }
+    if (job.name === "scrape-preview") {
+        return runScrapePreview(job.data.productUrl);
+    }
     // Polling and test scrape stubs intentionally no-op for now
 }, { connection: redisConnection, concurrency: 2 });
 // Simplified processor using decision logic; Playwright automation omitted for now.
@@ -121,6 +127,16 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }) {
     }
     // Real scrape to evaluate price/points/shipping
     const scrape = await (0, amazonAutomation_1.scrapeAmazonProduct)(amazonUrl);
+    let scrapeClosed = false;
+    const cleanupScrape = async () => {
+        if (scrapeClosed)
+            return;
+        scrapeClosed = true;
+        await scrape.page.close().catch(() => { });
+        if (scrape.context) {
+            await scrape.context.close().catch(() => { });
+        }
+    };
     const { price, pointsEarned, estimatedDelivery, isAvailable, isNew, currency: amazonCurrency } = scrape.result;
     if (!isAvailable || !isNew || !price || Number.isNaN(price)) {
         await prisma.errorItem.create({
@@ -136,7 +152,7 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }) {
                 metadata: { amazonCurrency }
             }
         });
-        await scrape.browser.close();
+        await cleanupScrape();
         await prisma.shopeeOrder.update({
             where: { id: shopeeOrderId },
             data: { processingStatus: client_1.ProcessingStatus.MANUAL_REVIEW, processingMode: client_1.ProcessingMode.AUTO }
@@ -214,7 +230,7 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }) {
             where: { id: shopeeOrderId },
             data: { processingStatus: client_1.ProcessingStatus.MANUAL_REVIEW, processingMode: client_1.ProcessingMode.AUTO_DRY_RUN }
         });
-        await scrape.browser.close();
+        await cleanupScrape();
         return;
     }
     // AUTO_FULFILL path: enqueue real automation placeholder
@@ -301,7 +317,51 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }) {
         });
     }
     finally {
-        await scrape.browser.close();
+        await cleanupScrape();
+    }
+}
+async function runScrapePreview(productUrl) {
+    let pageRef = null;
+    let contextRef = null;
+    try {
+        const scrape = await (0, amazonAutomation_1.scrapeAmazonProduct)(productUrl);
+        pageRef = scrape.page;
+        contextRef = scrape.context ?? null;
+        const normalized = {
+            productUrl,
+            price: scrape.result.price,
+            currency: scrape.result.currency,
+            isAvailable: scrape.result.isAvailable,
+            isNew: scrape.result.isNew,
+            estimatedDelivery: scrape.result.estimatedDelivery ? scrape.result.estimatedDelivery.toISOString() : null,
+            pointsEarned: typeof scrape.result.pointsEarned === "number" ? scrape.result.pointsEarned : null,
+            shippingText: scrape.result.shippingText ?? null,
+            title: scrape.result.title ?? null,
+            asin: scrape.result.asin ?? null,
+            scrapedAt: new Date().toISOString()
+        };
+        return { ok: true, result: normalized };
+    }
+    catch (err) {
+        if (err instanceof amazonAutomation_1.AutomationError) {
+            return {
+                ok: false,
+                error: {
+                    code: err.code,
+                    message: err.message,
+                    screenshotPath: err.screenshotPath ?? null
+                }
+            };
+        }
+        throw err;
+    }
+    finally {
+        if (pageRef) {
+            await pageRef.close().catch(() => { });
+        }
+        if (contextRef) {
+            await contextRef.close().catch(() => { });
+        }
     }
 }
 async function classifyShopOrders(shopId) {
@@ -517,6 +577,87 @@ async function pollShop(shopId) {
         }
     }
     await classifyShopOrders(shopId);
+}
+async function verifyCredentials(shopId) {
+    if (!AES_KEY) {
+        console.error("Missing AES key, cannot verify credentials");
+        return;
+    }
+    const shop = await prisma.shop.findUnique({
+        where: { id: shopId },
+        include: {
+            ShopeeCredential: true,
+            amazonCredential: true
+        }
+    });
+    if (!shop) {
+        console.warn(`Shop ${shopId} not found for credential verification`);
+        return;
+    }
+    if (shop.ShopeeCredential) {
+        try {
+            const partnerKey = (0, secret_1.decryptSecret)(shop.ShopeeCredential.partnerKeyEncrypted, shop.ShopeeCredential.partnerKeyIv, AES_KEY);
+            const accessToken = shop.ShopeeCredential.accessTokenEncrypted
+                ? (0, secret_1.decryptSecret)(shop.ShopeeCredential.accessTokenEncrypted, shop.ShopeeCredential.accessTokenIv, AES_KEY)
+                : "";
+            await (0, shopeeClient_1.getShopInfo)({
+                partnerId: shop.ShopeeCredential.partnerId,
+                partnerKey,
+                accessToken: accessToken || undefined,
+                shopId: shop.shopeeShopId,
+                baseUrl: shop.ShopeeCredential.baseUrl
+            });
+            await prisma.shopeeCredential.update({
+                where: { id: shop.ShopeeCredential.id },
+                data: {
+                    lastValidatedAt: new Date(),
+                    lastValidationStatus: "healthy",
+                    lastValidationError: null
+                }
+            });
+        }
+        catch (err) {
+            const message = err?.message || "Shopee credential check failed";
+            await prisma.shopeeCredential.update({
+                where: { id: shop.ShopeeCredential.id },
+                data: {
+                    lastValidatedAt: new Date(),
+                    lastValidationStatus: "failed",
+                    lastValidationError: message.slice(0, 500)
+                }
+            });
+            await sendAlert("SHOPEE_CREDENTIAL_FAIL", message, { shopId });
+        }
+    }
+    if (shop.amazonCredential) {
+        try {
+            const password = (0, secret_1.decryptSecret)(shop.amazonCredential.passwordEncrypted, shop.amazonCredential.encryptionIv, AES_KEY);
+            await (0, amazonAutomation_1.verifyAmazonCredentials)({
+                loginEmail: shop.amazonCredential.username,
+                loginPassword: password
+            });
+            await prisma.amazonCredential.update({
+                where: { id: shop.amazonCredential.id },
+                data: {
+                    lastValidatedAt: new Date(),
+                    lastValidationStatus: "healthy",
+                    lastValidationError: null
+                }
+            });
+        }
+        catch (err) {
+            const message = err instanceof amazonAutomation_1.AutomationError ? err.message : err?.message || "Amazon credential check failed";
+            await prisma.amazonCredential.update({
+                where: { id: shop.amazonCredential.id },
+                data: {
+                    lastValidatedAt: new Date(),
+                    lastValidationStatus: "failed",
+                    lastValidationError: message.slice(0, 500)
+                }
+            });
+            await sendAlert("AMAZON_CREDENTIAL_FAIL", message, { shopId });
+        }
+    }
 }
 function mapShopeeStatus(status) {
     const normalizedStatus = status?.toUpperCase().replace(/[_\s-]/g, '_');

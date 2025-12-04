@@ -20,45 +20,6 @@ interface PricingRule {
   scheduleLabel: string;
 }
 
-const SAMPLE_RULES: PricingRule[] = [
-  {
-    id: "rule-fixed-margin",
-    name: "Top sellers +¥900 markup",
-    ruleType: "FIXED_MARGIN" as const,
-    fixedMarkupAmount: 900,
-    minMarginPercent: null,
-    maxMarginPercent: null,
-    priority: 10,
-    isActive: true,
-    applyToCategories: ["Electronics", "Home"],
-    scheduleLabel: "Always on"
-  },
-  {
-    id: "rule-percentage",
-    name: "New listings 18% margin",
-    ruleType: "PERCENTAGE_MARKUP" as const,
-    fixedMarkupAmount: null,
-    minMarginPercent: 18,
-    maxMarginPercent: 25,
-    priority: 25,
-    isActive: true,
-    applyToCategories: ["Beauty"],
-    scheduleLabel: "Weekdays"
-  },
-  {
-    id: "rule-competitor",
-    name: "Competitor match -1%",
-    ruleType: "COMPETITOR_MATCH" as const,
-    fixedMarkupAmount: null,
-    minMarginPercent: null,
-    maxMarginPercent: null,
-    priority: 40,
-    isActive: false,
-    applyToCategories: ["Toys"],
-    scheduleLabel: "Flash sales"
-  }
-];
-
 const RULE_TYPE_OPTIONS: { labelKey: string; value: RuleType; descriptionKey: string }[] = [
   { labelKey: "pricingRuleTypeFixed", value: "FIXED_MARGIN", descriptionKey: "pricingRuleTypeFixedDesc" },
   { labelKey: "pricingRuleTypePercent", value: "PERCENTAGE_MARKUP", descriptionKey: "pricingRuleTypePercentDesc" },
@@ -66,11 +27,67 @@ const RULE_TYPE_OPTIONS: { labelKey: string; value: RuleType; descriptionKey: st
   { labelKey: "pricingRuleTypeDynamic", value: "DYNAMIC_REPRICING", descriptionKey: "pricingRuleTypeDynamicDesc" }
 ];
 
+const ensureNumber = (value: number | null | undefined) => (typeof value === "number" && !Number.isNaN(value) ? value : 0);
+
+const formatNumber = (
+  value: number | null | undefined,
+  locale = "en-US",
+  options: Intl.NumberFormatOptions = {}
+) => new Intl.NumberFormat(locale, options).format(ensureNumber(value));
+
+const formatPercent = (value: number | null | undefined, locale = "en-US", fractionDigits = 0) =>
+  `${formatNumber(value, locale, { minimumFractionDigits: fractionDigits, maximumFractionDigits: fractionDigits })}%`;
+
 export default function PricingPage() {
-  const { t } = useTranslation("common");
-  const [rules, setRules] = useState<PricingRule[]>(SAMPLE_RULES);
+  const { t, i18n } = useTranslation("common");
+  const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
+  const sampleRules = useMemo<PricingRule[]>(
+    () => [
+      {
+        id: "rule-fixed-margin",
+        name: t("pricingSampleRuleFixedName") || "Top sellers +¥900 markup",
+        ruleType: "FIXED_MARGIN",
+        fixedMarkupAmount: 900,
+        minMarginPercent: null,
+        maxMarginPercent: null,
+        priority: 10,
+        isActive: true,
+        applyToCategories: [
+          t("pricingCategoryElectronics") || "Electronics",
+          t("pricingCategoryHome") || "Home"
+        ],
+        scheduleLabel: t("pricingRuleScheduleAlways") || "Always on"
+      },
+      {
+        id: "rule-percentage",
+        name: t("pricingSampleRulePercentName") || "New listings 18% margin",
+        ruleType: "PERCENTAGE_MARKUP",
+        fixedMarkupAmount: null,
+        minMarginPercent: 18,
+        maxMarginPercent: 25,
+        priority: 25,
+        isActive: true,
+        applyToCategories: [t("pricingCategoryBeauty") || "Beauty"],
+        scheduleLabel: t("pricingScheduleWeekdays") || "Weekdays"
+      },
+      {
+        id: "rule-competitor",
+        name: t("pricingSampleRuleCompetitorName") || "Competitor match -1%",
+        ruleType: "COMPETITOR_MATCH",
+        fixedMarkupAmount: null,
+        minMarginPercent: null,
+        maxMarginPercent: null,
+        priority: 40,
+        isActive: false,
+        applyToCategories: [t("pricingCategoryToys") || "Toys"],
+        scheduleLabel: t("pricingScheduleFlashSales") || "Flash sales"
+      }
+    ],
+    [t]
+  );
+  const [rules, setRules] = useState<PricingRule[]>(sampleRules);
   const [saving, setSaving] = useState(false);
-  const [usingSampleData] = useState(true);
+  const usingSampleData = true;
   const [ruleSearch, setRuleSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -146,17 +163,17 @@ export default function PricingPage() {
   const heroHighlights = [
     {
       label: t("pricingRuleCount") || "Total rules",
-      value: summary.total.toLocaleString(),
+      value: formatNumber(summary.total, localeForDisplay),
       helper: t("pricingRuleCountHelper") || "Automation recipes configured",
     },
     {
       label: t("pricingRuleActive") || "Active",
-      value: summary.active.toLocaleString(),
+      value: formatNumber(summary.active, localeForDisplay),
       helper: t("pricingRuleActiveHelper") || "Currently enforcing prices",
     },
     {
       label: t("pricingRuleGuardrail") || "Guardrail",
-      value: `${summary.guardrails}%`,
+      value: formatPercent(summary.guardrails, localeForDisplay),
       helper: t("pricingRuleGuardrailHelper") || "Average margin floor",
     },
   ];
@@ -228,15 +245,15 @@ export default function PricingPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[{
             label: t("pricingRuleCount") || "Total rules",
-            value: summary.total,
+            value: formatNumber(summary.total, localeForDisplay),
             variant: "info" as const,
           }, {
             label: t("pricingRuleActive") || "Active",
-            value: summary.active,
+            value: formatNumber(summary.active, localeForDisplay),
             variant: "success" as const,
           }, {
             label: t("pricingRuleGuardrail") || "Guardrail",
-            value: `${summary.guardrails}%`,
+            value: formatPercent(summary.guardrails, localeForDisplay),
             variant: "warning" as const,
           }].map((item) => (
             <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -343,9 +360,9 @@ export default function PricingPage() {
               icon="📈"
             />
             <div className="grid grid-3" style={{ gap: 16 }}>
-              <StatCard label={t("pricingRuleCount") || "Rules"} value={summary.total} trend={summary.total} icon="📦" color="primary" />
-              <StatCard label={t("pricingRuleActive") || "Active"} value={summary.active} trend={summary.active} icon="⚡" color="success" />
-              <StatCard label={t("pricingRuleGuardrail") || "Guardrail"} value={`${summary.guardrails}%`} trend={summary.guardrails} icon="🛡️" color="warning" />
+              <StatCard label={t("pricingRuleCount") || "Rules"} value={formatNumber(summary.total, localeForDisplay)} trend={summary.total} icon="📦" color="primary" />
+              <StatCard label={t("pricingRuleActive") || "Active"} value={formatNumber(summary.active, localeForDisplay)} trend={summary.active} icon="⚡" color="success" />
+              <StatCard label={t("pricingRuleGuardrail") || "Guardrail"} value={formatPercent(summary.guardrails, localeForDisplay)} trend={summary.guardrails} icon="🛡️" color="warning" />
             </div>
           </Card>
 
@@ -430,7 +447,12 @@ export default function PricingPage() {
                 title={t("pricingRuleListTitle") || "Automation library"}
                 subtitle={
                   ruleSearch
-                    ? t("pricingRuleFilteredSubtitle", { count: filteredRules.length }) || `${filteredRules.length} filtered rule(s)`
+                    ?
+                      t("pricingRuleFilteredSubtitle", {
+                        count: filteredRules.length,
+                        countDisplay: formatNumber(filteredRules.length, localeForDisplay)
+                      }) ||
+                      `${formatNumber(filteredRules.length, localeForDisplay)} filtered rule(s)`
                     : t("pricingRuleListSubtitle") || "Active rules with priorities"
                 }
                 icon="🗂️"

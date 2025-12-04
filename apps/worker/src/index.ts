@@ -4,8 +4,8 @@ import { Prisma, PrismaClient, ProcessingStatus, ProcessingMode, AutoFulfillment
 import { calculateProfit, classifyFulfillmentDecision, calculateShippingDays } from "@shopee-amazon/shared";
 import fetch from "node-fetch";
 import { decryptSecret } from "./secret";
-import { fetchNewOrders, fetchOrderDetail } from "./shopeeClient";
-import { scrapeAmazonProduct, purchaseAmazonProduct, AutomationError } from "./amazonAutomation";
+import { fetchNewOrders, fetchOrderDetail, getShopInfo } from "./shopeeClient";
+import { scrapeAmazonProduct, purchaseAmazonProduct, AutomationError, verifyAmazonCredentials } from "./amazonAutomation";
 
 dotenv.config();
 
@@ -39,6 +39,32 @@ type ProcessOrderJob = {
   retrySource?: string;
 };
 
+type ScrapePreviewJobResult =
+  | {
+      ok: true;
+      result: {
+        productUrl: string;
+        price: number;
+        currency?: string;
+        isAvailable: boolean;
+        isNew: boolean;
+        estimatedDelivery?: string | null;
+        pointsEarned?: number | null;
+        shippingText?: string | null;
+        title?: string | null;
+        asin?: string | null;
+        scrapedAt: string;
+      };
+    }
+  | {
+      ok: false;
+      error: {
+        code: string;
+        message: string;
+        screenshotPath?: string | null;
+      };
+    };
+
 new Worker(
   queueName,
   async (job) => {
@@ -62,6 +88,12 @@ new Worker(
           await queue.removeRepeatableByKey(r.key);
         }
       }
+    }
+    if (job.name === "verify-credentials") {
+      return verifyCredentials(job.data.shopId as string);
+    }
+    if (job.name === "scrape-preview") {
+      return runScrapePreview(job.data.productUrl as string);
     }
     // Polling and test scrape stubs intentionally no-op for now
   },
@@ -138,6 +170,15 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
 
   // Real scrape to evaluate price/points/shipping
   const scrape = await scrapeAmazonProduct(amazonUrl);
+  let scrapeClosed = false;
+  const cleanupScrape = async () => {
+    if (scrapeClosed) return;
+    scrapeClosed = true;
+    await scrape.page.close().catch(() => {});
+    if (scrape.context) {
+      await scrape.context.close().catch(() => {});
+    }
+  };
   const { price, pointsEarned, estimatedDelivery, isAvailable, isNew, currency: amazonCurrency } = scrape.result;
   if (!isAvailable || !isNew || !price || Number.isNaN(price)) {
     await prisma.errorItem.create({
@@ -153,7 +194,7 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
         metadata: { amazonCurrency }
       }
     });
-    await scrape.browser.close();
+    await cleanupScrape();
     await prisma.shopeeOrder.update({
       where: { id: shopeeOrderId },
       data: { processingStatus: ProcessingStatus.MANUAL_REVIEW, processingMode: ProcessingMode.AUTO }
@@ -237,7 +278,7 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
       where: { id: shopeeOrderId },
       data: { processingStatus: ProcessingStatus.MANUAL_REVIEW, processingMode: ProcessingMode.AUTO_DRY_RUN }
     });
-    await scrape.browser.close();
+    await cleanupScrape();
     return;
   }
 
@@ -325,7 +366,52 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
       }
     });
   } finally {
-    await scrape.browser.close();
+    await cleanupScrape();
+  }
+}
+
+async function runScrapePreview(productUrl: string): Promise<ScrapePreviewJobResult> {
+  let pageRef: { close: () => Promise<void> } | null = null;
+  let contextRef: { close: () => Promise<void> } | null = null;
+  try {
+    const scrape = await scrapeAmazonProduct(productUrl);
+    pageRef = scrape.page;
+    contextRef = scrape.context ?? null;
+
+    const normalized = {
+      productUrl,
+      price: scrape.result.price,
+      currency: scrape.result.currency,
+      isAvailable: scrape.result.isAvailable,
+      isNew: scrape.result.isNew,
+      estimatedDelivery: scrape.result.estimatedDelivery ? scrape.result.estimatedDelivery.toISOString() : null,
+      pointsEarned: typeof scrape.result.pointsEarned === "number" ? scrape.result.pointsEarned : null,
+      shippingText: scrape.result.shippingText ?? null,
+      title: scrape.result.title ?? null,
+      asin: scrape.result.asin ?? null,
+      scrapedAt: new Date().toISOString()
+    };
+
+    return { ok: true, result: normalized };
+  } catch (err: any) {
+    if (err instanceof AutomationError) {
+      return {
+        ok: false,
+        error: {
+          code: err.code,
+          message: err.message,
+          screenshotPath: err.screenshotPath ?? null
+        }
+      };
+    }
+    throw err;
+  } finally {
+    if (pageRef) {
+      await pageRef.close().catch(() => {});
+    }
+    if (contextRef) {
+      await contextRef.close().catch(() => {});
+    }
   }
 }
 
@@ -555,6 +641,101 @@ async function pollShop(shopId: string) {
   }
 
   await classifyShopOrders(shopId);
+}
+
+async function verifyCredentials(shopId: string) {
+  if (!AES_KEY) {
+    console.error("Missing AES key, cannot verify credentials");
+    return;
+  }
+
+  const shop = await prisma.shop.findUnique({
+    where: { id: shopId },
+    include: {
+      ShopeeCredential: true,
+      amazonCredential: true
+    }
+  });
+  if (!shop) {
+    console.warn(`Shop ${shopId} not found for credential verification`);
+    return;
+  }
+
+  if (shop.ShopeeCredential) {
+    try {
+      const partnerKey = decryptSecret(
+        shop.ShopeeCredential.partnerKeyEncrypted,
+        shop.ShopeeCredential.partnerKeyIv,
+        AES_KEY
+      );
+      const accessToken = shop.ShopeeCredential.accessTokenEncrypted
+        ? decryptSecret(
+            shop.ShopeeCredential.accessTokenEncrypted,
+            shop.ShopeeCredential.accessTokenIv,
+            AES_KEY
+          )
+        : "";
+      await getShopInfo({
+        partnerId: shop.ShopeeCredential.partnerId,
+        partnerKey,
+        accessToken: accessToken || undefined,
+        shopId: shop.shopeeShopId,
+        baseUrl: shop.ShopeeCredential.baseUrl
+      });
+      await prisma.shopeeCredential.update({
+        where: { id: shop.ShopeeCredential.id },
+        data: {
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "healthy",
+          lastValidationError: null
+        }
+      });
+    } catch (err: any) {
+      const message = err?.message || "Shopee credential check failed";
+      await prisma.shopeeCredential.update({
+        where: { id: shop.ShopeeCredential.id },
+        data: {
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "failed",
+          lastValidationError: message.slice(0, 500)
+        }
+      });
+      await sendAlert("SHOPEE_CREDENTIAL_FAIL", message, { shopId });
+    }
+  }
+
+  if (shop.amazonCredential) {
+    try {
+      const password = decryptSecret(
+        shop.amazonCredential.passwordEncrypted,
+        shop.amazonCredential.encryptionIv,
+        AES_KEY
+      );
+      await verifyAmazonCredentials({
+        loginEmail: shop.amazonCredential.username,
+        loginPassword: password
+      });
+      await prisma.amazonCredential.update({
+        where: { id: shop.amazonCredential.id },
+        data: {
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "healthy",
+          lastValidationError: null
+        }
+      });
+    } catch (err: any) {
+      const message = err instanceof AutomationError ? err.message : err?.message || "Amazon credential check failed";
+      await prisma.amazonCredential.update({
+        where: { id: shop.amazonCredential.id },
+        data: {
+          lastValidatedAt: new Date(),
+          lastValidationStatus: "failed",
+          lastValidationError: message.slice(0, 500)
+        }
+      });
+      await sendAlert("AMAZON_CREDENTIAL_FAIL", message, { shopId });
+    }
+  }
 }
 
 function mapShopeeStatus(status: string): ShopeeStatus {

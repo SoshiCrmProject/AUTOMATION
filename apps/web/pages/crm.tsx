@@ -109,22 +109,21 @@ export default function CRM() {
   // Handler functions
   const handleAddInteraction = async () => {
     if (!selectedCustomer || !interactionDesc.trim()) {
-      pushToast("Please fill in all required fields", "error");
+      pushToast(t("crmInteractionFieldsRequired") || "Please fill in all required fields", "error");
       return;
     }
-    
+
     setLoading(true);
     try {
       await api.post(`/api/crm/${selectedCustomer.id}/interactions`, {
         type: interactionType,
         description: interactionDesc,
       });
-      pushToast("Interaction added successfully", "success");
+      pushToast(t("crmInteractionAddSuccess") || "Interaction added successfully", "success");
       setShowAddInteractionModal(false);
       setInteractionDesc("");
-      // Refresh interactions
     } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to add interaction", "error");
+      pushToast(error.response?.data?.error || t("crmInteractionAddError") || "Failed to add interaction", "error");
     } finally {
       setLoading(false);
     }
@@ -134,10 +133,9 @@ export default function CRM() {
     setLoading(true);
     try {
       await api.post(`/api/crm/interactions/${interactionId}/resolve`);
-      pushToast("Interaction resolved", "success");
-      // Refresh interactions
+      pushToast(t("crmInteractionResolveSuccess") || "Interaction resolved", "success");
     } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to resolve interaction", "error");
+      pushToast(error.response?.data?.error || t("crmInteractionResolveError") || "Failed to resolve interaction", "error");
     } finally {
       setLoading(false);
     }
@@ -145,22 +143,22 @@ export default function CRM() {
 
   const handleUpdateLoyalty = async () => {
     if (!selectedCustomer || !loyaltyReason.trim()) {
-      pushToast("Please provide a reason", "error");
+      pushToast(t("crmLoyaltyReasonRequired") || "Please provide a reason", "error");
       return;
     }
-    
+
     setLoading(true);
     try {
       await api.post(`/api/crm/${selectedCustomer.id}/loyalty`, {
         newTier,
         reason: loyaltyReason,
       });
-      pushToast("Loyalty tier updated", "success");
+      pushToast(t("crmLoyaltyUpdateSuccess") || "Loyalty tier updated", "success");
       setShowLoyaltyModal(false);
       setLoyaltyReason("");
       refreshCustomers();
     } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to update loyalty", "error");
+      pushToast(error.response?.data?.error || t("crmLoyaltyUpdateError") || "Failed to update loyalty", "error");
     } finally {
       setLoading(false);
     }
@@ -171,10 +169,15 @@ export default function CRM() {
     try {
       const endpoint = blacklist ? `/api/crm/${customerId}/blacklist` : `/api/crm/${customerId}/unblacklist`;
       await api.post(endpoint);
-      pushToast(`Customer ${blacklist ? 'blacklisted' : 'unblacklisted'} successfully`, "success");
+      pushToast(
+        blacklist
+          ? t("crmCustomerBlacklisted") || "Customer blacklisted successfully"
+          : t("crmCustomerUnblacklisted") || "Customer removed from blacklist",
+        "success"
+      );
       refreshCustomers();
     } catch (error: any) {
-      pushToast(error.response?.data?.error || "Failed to update customer status", "error");
+      pushToast(error.response?.data?.error || t("crmCustomerStatusError") || "Failed to update customer status", "error");
     } finally {
       setLoading(false);
     }
@@ -211,6 +214,27 @@ export default function CRM() {
     }
   };
 
+  const getLoyaltyLabel = (tier: string) => {
+    switch (tier) {
+      case "PLATINUM": return t("loyaltyPlatinum") || "Platinum";
+      case "GOLD": return t("loyaltyGold") || "Gold";
+      case "SILVER": return t("loyaltySilver") || "Silver";
+      case "BRONZE": return t("loyaltyBronze") || "Bronze";
+      default: return tier;
+    }
+  };
+
+  const getInteractionLabel = (type: Interaction["type"]) => {
+    switch (type) {
+      case "PURCHASE": return t("interactionPurchase") || "Purchase";
+      case "SUPPORT": return t("interactionSupport") || "Support";
+      case "COMPLAINT": return t("interactionComplaint") || "Complaint";
+      case "REFUND": return t("interactionRefund") || "Refund";
+      case "INQUIRY": return t("interactionInquiry") || "Inquiry";
+      default: return type;
+    }
+  };
+
   const totalCustomers = stats?.totalCustomers ?? 0;
   const averageLtv = stats?.avgLifetimeValue ?? 0;
   const platinumMembers = stats?.loyaltyDistribution?.PLATINUM ?? 0;
@@ -238,7 +262,9 @@ export default function CRM() {
 
   const heroBadge = (
     <Badge variant={shopId ? "success" : "warning"}>
-      {shopId ? `${filteredCustomers.length} ${t("customersVisible") || "customers"}` : t("awaitingShopId") || "Awaiting shop ID"}
+      {shopId
+        ? t("crmCustomersCountBadge", { count: filteredCustomers.length }) || `${filteredCustomers.length} customers`
+        : t("awaitingShopId") || "Awaiting shop ID"}
     </Badge>
   );
 
@@ -279,8 +305,8 @@ export default function CRM() {
   );
 
   const toolbar = (
-    <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+    <div className="stack-md wrap" style={{ alignItems: "center" }}>
+      <div className="full-width-mobile" style={{ flex: "1 1 220px", minWidth: 200 }}>
         <Input
           placeholder={t("shopIdPlaceholder") || "Shop ID"}
           value={shopId}
@@ -288,7 +314,7 @@ export default function CRM() {
           aria-label={t("shopId") || "Shop ID"}
         />
       </div>
-      <div style={{ flex: "1 1 220px", minWidth: 200 }}>
+      <div className="full-width-mobile" style={{ flex: "1 1 220px", minWidth: 200 }}>
         <Input
           placeholder={t("searchCustomers") || "Search customers"}
           value={searchTerm}
@@ -297,32 +323,32 @@ export default function CRM() {
           disabled={!shopId}
         />
       </div>
-      <div style={{ flex: "0 1 180px", minWidth: 180 }}>
+      <div className="full-width-mobile" style={{ flex: "0 1 180px", minWidth: 180 }}>
         <Select
           value={tierFilter}
           onChange={(e) => setTierFilter(e.target.value)}
           options={[
             { value: "all", label: t("allTiers") || "All tiers" },
-            { value: "PLATINUM", label: "💎 Platinum" },
-            { value: "GOLD", label: "🥇 Gold" },
-            { value: "SILVER", label: "🥈 Silver" },
-            { value: "BRONZE", label: "🥉 Bronze" }
+            { value: "PLATINUM", label: `💎 ${getLoyaltyLabel("PLATINUM")}` },
+            { value: "GOLD", label: `🥇 ${getLoyaltyLabel("GOLD")}` },
+            { value: "SILVER", label: `🥈 ${getLoyaltyLabel("SILVER")}` },
+            { value: "BRONZE", label: `🥉 ${getLoyaltyLabel("BRONZE")}` }
           ]}
           disabled={!shopId}
         />
       </div>
-      <Button type="button" variant="ghost" onClick={handleRefresh}>
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleRefresh}>
         🔄 {t("refreshData") || "Refresh"}
       </Button>
     </div>
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={() => window.open("/api/crm/export", "_blank")}>
+    <div className="stack-md wrap">
+      <Button type="button" className="full-width-mobile" onClick={() => window.open("/api/crm/export", "_blank")}>
         ⬇️ {t("exportCsv") || "Export CSV"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleReplayTour}>
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleReplayTour}>
         🧭 {t("replayTour") || "Replay tour"}
       </Button>
     </div>
@@ -359,8 +385,8 @@ export default function CRM() {
     <>
       <PageLayout
         activeHref="/crm"
-        title="👥 Customer Relationship Management"
-        description={t("crmHeroDescription") || "Build relationships, track loyalty, and maximize customer lifetime value."}
+        title={`👥 ${t("crmTitle") || "Customer Relationship Management"}`}
+        description={t("crmHeroDescription") || t("crmDesc") || "Build relationships, track loyalty, and maximize customer lifetime value."}
         heroBadge={heroBadge}
         heroAside={heroAside}
         heroFooter={heroFooter}
@@ -396,7 +422,10 @@ export default function CRM() {
                   </div>
 
                   <Card>
-                    <CardHeader title="🏆 Loyalty Tier Distribution" subtitle={t("crmLoyaltySubtitle") || "Snapshot across all tiers"} />
+                    <CardHeader
+                      title={`🏆 ${t("crmLoyaltyDistribution") || "Loyalty tier distribution"}`}
+                      subtitle={t("crmLoyaltySubtitle") || "Snapshot across all tiers"}
+                    />
                     <div
                       style={{
                         display: "grid",
@@ -417,7 +446,7 @@ export default function CRM() {
                         >
                           <div style={{ fontSize: 32, marginBottom: 8 }}>{getTierEmoji(tier)}</div>
                           <div style={{ fontSize: 13, color: "var(--color-text-muted)", marginBottom: 4, fontWeight: 600 }}>
-                            {tier}
+                            {getLoyaltyLabel(tier)}
                           </div>
                           <div style={{ fontSize: 24, fontWeight: 700, color: getTierColor(tier) }}>
                             {count}
@@ -470,7 +499,10 @@ export default function CRM() {
 
               {filteredCustomers.length > 0 ? (
                 <Card>
-                  <CardHeader title="📋 Customer List" subtitle={`${filteredCustomers.length} ${t("customers") || "customers"}`} />
+                  <CardHeader
+                    title={`📋 ${t("crmCustomerListTitle") || "Customer list"}`}
+                    subtitle={t("crmCustomerListSubtitle", { count: filteredCustomers.length }) || `${filteredCustomers.length} customers`}
+                  />
                   <Table
                     columns={[
                       { key: "customer", header: t("customer") || "Customer" },
@@ -492,7 +524,7 @@ export default function CRM() {
                       tier: (
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 20 }}>{getTierEmoji(customer.loyaltyTier)}</span>
-                          <span style={{ fontWeight: 600, color: getTierColor(customer.loyaltyTier) }}>{customer.loyaltyTier}</span>
+                          <span style={{ fontWeight: 600, color: getTierColor(customer.loyaltyTier) }}>{getLoyaltyLabel(customer.loyaltyTier)}</span>
                         </div>
                       ),
                       orders: <Badge variant="info">{customer.totalOrders}</Badge>,
@@ -567,34 +599,34 @@ export default function CRM() {
             <div style={{ marginTop: 24 }}>
               <div className="grid grid-2" style={{ gap: 16, marginBottom: 24 }}>
                 <div>
-                  <label className="label">Email</label>
+                  <label className="label">{t("email") || "Email"}</label>
                   <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.email}</div>
                 </div>
                 <div>
-                  <label className="label">Phone</label>
-                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.phone || "N/A"}</div>
+                  <label className="label">{t("phone") || "Phone"}</label>
+                  <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.phone || (t("notAvailableShort") || "N/A")}</div>
                 </div>
                 <div>
-                  <label className="label">Total Orders</label>
+                  <label className="label">{t("totalOrders") || "Total Orders"}</label>
                   <div style={{ fontSize: 15, color: "var(--color-text)" }}>{selectedCustomer.totalOrders}</div>
                 </div>
                 <div>
-                  <label className="label">Lifetime Value</label>
+                  <label className="label">{t("lifetimeValue") || "Lifetime Value"}</label>
                   <div style={{ fontSize: 15, color: "var(--color-success)", fontWeight: 600 }}>
                     ${selectedCustomer.lifetimeValue.toLocaleString()}
                   </div>
                 </div>
                 <div>
-                  <label className="label">Loyalty Tier</label>
+                  <label className="label">{t("loyaltyTier") || "Loyalty Tier"}</label>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 20 }}>{getTierEmoji(selectedCustomer.loyaltyTier)}</span>
                     <span style={{ fontSize: 15, fontWeight: 600, color: getTierColor(selectedCustomer.loyaltyTier) }}>
-                      {selectedCustomer.loyaltyTier}
+                      {getLoyaltyLabel(selectedCustomer.loyaltyTier)}
                     </span>
                   </div>
                 </div>
                 <div>
-                  <label className="label">Member Since</label>
+                  <label className="label">{t("memberSince") || "Member Since"}</label>
                   <div style={{ fontSize: 15, color: "var(--color-text)" }}>
                     {new Date(selectedCustomer.createdAt).toLocaleDateString()}
                   </div>
@@ -602,14 +634,16 @@ export default function CRM() {
               </div>
               <div style={{ display: "flex", gap: 12 }}>
                 <Button onClick={() => setShowLoyaltyModal(true)} variant="primary" fullWidth>
-                  Update Loyalty Tier
+                  {t("updateLoyaltyTier") || "Update Loyalty Tier"}
                 </Button>
                 <Button
                   onClick={() => handleBlacklist(selectedCustomer.id, !selectedCustomer.isBlacklisted)}
                   variant={selectedCustomer.isBlacklisted ? "success" : "danger"}
                   fullWidth
                 >
-                  {selectedCustomer.isBlacklisted ? "Unblacklist" : "Blacklist"}
+                  {selectedCustomer.isBlacklisted
+                    ? t("crmUnblacklist") || "Unblacklist"
+                    : t("crmBlacklist") || "Blacklist"}
                 </Button>
               </div>
             </div>
@@ -640,7 +674,7 @@ export default function CRM() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start", marginBottom: 8 }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 20 }}>{getInteractionIcon(interaction.type)}</span>
-                          <Badge variant={interaction.resolved ? "success" : "warning"}>{interaction.type}</Badge>
+                          <Badge variant={interaction.resolved ? "success" : "warning"}>{getInteractionLabel(interaction.type)}</Badge>
                         </div>
                         <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
                           {new Date(interaction.createdAt).toLocaleDateString()}
@@ -654,7 +688,7 @@ export default function CRM() {
                           onClick={() => handleResolveInteraction(interaction.id)}
                           disabled={loading}
                         >
-                          Mark Resolved
+                          {t("crmMarkResolved") || "Mark resolved"}
                         </Button>
                       )}
                     </div>
@@ -684,12 +718,12 @@ export default function CRM() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                           <span style={{ fontSize: 16 }}>{getTierEmoji(history.previousTier)}</span>
                           <span style={{ color: getTierColor(history.previousTier), fontWeight: 600 }}>
-                            {history.previousTier}
+                            {getLoyaltyLabel(history.previousTier)}
                           </span>
                           <span style={{ margin: "0 8px", color: "var(--color-text-muted)" }}>→</span>
                           <span style={{ fontSize: 16 }}>{getTierEmoji(history.newTier)}</span>
                           <span style={{ color: getTierColor(history.newTier), fontWeight: 600 }}>
-                            {history.newTier}
+                            {getLoyaltyLabel(history.newTier)}
                           </span>
                         </div>
                         <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
@@ -718,19 +752,19 @@ export default function CRM() {
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Select
-            label="Interaction Type"
+            label={t("interactionType") || "Interaction Type"}
             value={interactionType}
             onChange={(e) => setInteractionType(e.target.value)}
             options={[
-              { value: "PURCHASE", label: "🛒 Purchase" },
-              { value: "SUPPORT", label: "🎧 Support" },
-              { value: "COMPLAINT", label: "⚠️ Complaint" },
-              { value: "REFUND", label: "💸 Refund" },
-              { value: "INQUIRY", label: "❓ Inquiry" }
+              { value: "PURCHASE", label: `🛒 ${getInteractionLabel("PURCHASE")}` },
+              { value: "SUPPORT", label: `🎧 ${getInteractionLabel("SUPPORT")}` },
+              { value: "COMPLAINT", label: `⚠️ ${getInteractionLabel("COMPLAINT")}` },
+              { value: "REFUND", label: `💸 ${getInteractionLabel("REFUND")}` },
+              { value: "INQUIRY", label: `❓ ${getInteractionLabel("INQUIRY")}` }
             ]}
           />
           <div>
-            <label className="label">Description</label>
+            <label className="label">{t("description") || "Description"}</label>
             <textarea
               className="input"
               value={interactionDesc}
@@ -761,18 +795,18 @@ export default function CRM() {
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <Select
-            label="New Tier"
+            label={t("crmNewTierLabel") || "New tier"}
             value={newTier}
             onChange={(e) => setNewTier(e.target.value)}
             options={[
-              { value: "BRONZE", label: "🥉 Bronze" },
-              { value: "SILVER", label: "🥈 Silver" },
-              { value: "GOLD", label: "🥇 Gold" },
-              { value: "PLATINUM", label: "💎 Platinum" }
+              { value: "BRONZE", label: `🥉 ${getLoyaltyLabel("BRONZE")}` },
+              { value: "SILVER", label: `🥈 ${getLoyaltyLabel("SILVER")}` },
+              { value: "GOLD", label: `🥇 ${getLoyaltyLabel("GOLD")}` },
+              { value: "PLATINUM", label: `💎 ${getLoyaltyLabel("PLATINUM")}` }
             ]}
           />
           <div>
-            <label className="label">Reason</label>
+            <label className="label">{t("tierChangeReason") || t("reason") || "Reason"}</label>
             <textarea
               className="input"
               value={loyaltyReason}
@@ -784,10 +818,10 @@ export default function CRM() {
           </div>
           <div style={{ display: "flex", gap: 12 }}>
             <Button onClick={handleUpdateLoyalty} variant="primary" fullWidth disabled={loading}>
-              Update Tier
+              {t("updateLoyaltyTier") || "Update tier"}
             </Button>
             <Button onClick={() => setShowLoyaltyModal(false)} variant="ghost" fullWidth>
-              Cancel
+              {t("cancel") || "Cancel"}
             </Button>
           </div>
         </div>

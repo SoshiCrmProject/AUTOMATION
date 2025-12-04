@@ -23,6 +23,26 @@ import Toast, { pushToast } from "../components/Toast";
 
 const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
+const formatNumber = (value: number, locale: string) =>
+  new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(value);
+
+const formatDate = (value: string, locale: string, options?: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    ...options,
+  }).format(new Date(value));
+
+const formatDateTime = (value: string, locale: string, options?: Intl.DateTimeFormatOptions) =>
+  new Intl.DateTimeFormat(locale, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    ...options,
+  }).format(new Date(value));
+
 type NotificationChannel = {
   id: string;
   name: string;
@@ -38,7 +58,7 @@ type NotificationRule = {
   event: string;
   channelId: string;
   isActive: boolean;
-  conditions: any;
+  conditions?: any;
   template: string;
   priority: string;
   createdAt: string;
@@ -47,6 +67,8 @@ type NotificationRule = {
 type SentNotification = {
   id: string;
   channelId: string;
+  channelName?: string;
+  channelType?: string;
   subject: string;
   message: string;
   priority: string;
@@ -56,9 +78,9 @@ type SentNotification = {
 };
 
 export default function Notifications() {
-  const { t } = useTranslation("common");
+  const { t, i18n } = useTranslation("common");
+  const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
   const [shopId, setShopId] = useState<string>("");
-  const [selectedChannel, setSelectedChannel] = useState<string>("");
   const [showAddChannelModal, setShowAddChannelModal] = useState(false);
   const [showAddRuleModal, setShowAddRuleModal] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -108,6 +130,17 @@ export default function Notifications() {
     }
   };
 
+  const getChannelLabel = (type: string) => {
+    switch (type) {
+      case "EMAIL": return t("channelEmail") || "Email";
+      case "SMS": return t("channelSMS") || "SMS";
+      case "SLACK": return t("channelSlack") || "Slack";
+      case "DISCORD": return t("channelDiscord") || "Discord";
+      case "WEBHOOK": return t("channelWebhook") || "Webhook";
+      default: return type;
+    }
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "CRITICAL": return "error";
@@ -115,6 +148,16 @@ export default function Notifications() {
       case "MEDIUM": return "info";
       case "LOW": return "success";
       default: return "info";
+    }
+  };
+
+  const getPriorityLabel = (priority: string) => {
+    switch (priority) {
+      case "CRITICAL": return t("priorityCritical") || "Critical";
+      case "HIGH": return t("priorityHigh") || "High";
+      case "MEDIUM": return t("priorityMedium") || "Medium";
+      case "LOW": return t("priorityLow") || "Low";
+      default: return priority;
     }
   };
 
@@ -127,19 +170,28 @@ export default function Notifications() {
     }
   };
 
+  const getStatusLabel = (status: string) => {
+    switch (status) {
+      case "SENT": return t("notificationStatusSent") || "Sent";
+      case "FAILED": return t("notificationStatusFailed") || "Failed";
+      case "PENDING": return t("notificationStatusPending") || "Pending";
+      default: return t("notificationStatusUnknown") || status || "Unknown";
+    }
+  };
+
   const testChannel = async (channelId: string) => {
     try {
       await api.post(`/api/notifications/test/${channelId}`);
-      pushToast(t("toastTestNotificationSuccess"), "success");
+      pushToast(t("toastTestNotificationSuccess") || "Test notification sent", "success");
       refreshHistory();
     } catch (err) {
-      pushToast(t("toastTestNotificationFailed"), "error");
+      pushToast(t("toastTestNotificationFailed") || "Failed to send test notification", "error");
     }
   };
 
   const handleAddChannel = async () => {
     if (!shopId || !newChannel.name) {
-      pushToast(t("toastPleaseFilLRequiredFields"), "error");
+      pushToast(t("toastPleaseFilLRequiredFields") || "Please fill in all required fields", "error");
       return;
     }
     
@@ -149,12 +201,12 @@ export default function Notifications() {
         shopId,
         ...newChannel
       });
-      pushToast(t("toastChannelCreated"), "success");
+      pushToast(t("toastChannelCreated") || "Channel created", "success");
       setShowAddChannelModal(false);
       setNewChannel({ name: "", type: "EMAIL", config: {} });
       refreshChannels();
     } catch (err: any) {
-      pushToast(err.response?.data?.error || "Failed to create channel", "error");
+      pushToast(err.response?.data?.error || t("toastChannelCreateFailed") || "Failed to create channel", "error");
     } finally {
       setLoading(false);
     }
@@ -162,7 +214,7 @@ export default function Notifications() {
 
   const handleAddRule = async () => {
     if (!shopId || !newRule.name || !newRule.channelId) {
-      pushToast(t("toastPleaseFilLRequiredFields"), "error");
+      pushToast(t("toastPleaseFilLRequiredFields") || "Please fill in all required fields", "error");
       return;
     }
     
@@ -172,12 +224,12 @@ export default function Notifications() {
         shopId,
         ...newRule
       });
-      pushToast(t("toastRuleCreated"), "success");
+      pushToast(t("toastRuleCreated") || "Notification rule created", "success");
       setShowAddRuleModal(false);
       setNewRule({ name: "", event: "ORDER_PLACED", channelId: "", priority: "MEDIUM", template: "" });
       refreshRules();
     } catch (err: any) {
-      pushToast(err.response?.data?.error || "Failed to create rule", "error");
+      pushToast(err.response?.data?.error || t("toastRuleCreateFailed") || "Failed to create rule", "error");
     } finally {
       setLoading(false);
     }
@@ -186,32 +238,42 @@ export default function Notifications() {
   const toggleChannel = async (channelId: string, isActive: boolean) => {
     try {
       await api.patch(`/api/notifications/channels/${channelId}`, { isActive });
-      pushToast(`Channel ${isActive ? 'activated' : 'deactivated'}`, "success");
+      pushToast(
+        isActive
+          ? t("toastChannelActivated") || "Channel activated"
+          : t("toastChannelDeactivated") || "Channel deactivated",
+        "success"
+      );
       refreshChannels();
     } catch (err) {
-      pushToast(t("toastChannelUpdateFailed"), "error");
+      pushToast(t("toastChannelUpdateFailed") || "Failed to update channel", "error");
     }
   };
 
   const toggleRule = async (ruleId: string, isActive: boolean) => {
     try {
       await api.patch(`/api/notifications/rules/${ruleId}`, { isActive });
-      pushToast(`Rule ${isActive ? 'activated' : 'deactivated'}`, "success");
+      pushToast(
+        isActive
+          ? t("toastRuleActivated") || "Rule activated"
+          : t("toastRuleDeactivated") || "Rule deactivated",
+        "success"
+      );
       refreshRules();
     } catch (err) {
-      pushToast(t("toastRuleUpdateFailed"), "error");
+      pushToast(t("toastRuleUpdateFailed") || "Failed to update rule", "error");
     }
   };
 
   const deleteChannel = async (channelId: string) => {
-    if (!confirm(t("confirmDeleteChannel"))) return;
+    if (!confirm(t("confirmDeleteChannel") || "Delete this channel?")) return;
     
     try {
       await api.delete(`/api/notifications/channels/${channelId}`);
-      pushToast(t("toastChannelDeleted"), "success");
+      pushToast(t("toastChannelDeleted") || "Channel deleted", "success");
       refreshChannels();
     } catch (err) {
-      pushToast(t("toastChannelDeleteFailed"), "error");
+      pushToast(t("toastChannelDeleteFailed") || "Failed to delete channel", "error");
     }
   };
 
@@ -276,9 +338,21 @@ export default function Notifications() {
   );
 
   const heroHighlights = [
-    { label: t("notificationsChannels") || "Channels", value: stats.totalChannels.toLocaleString(), helper: t("notificationsChannelsHelper") || "Configured endpoints" },
-    { label: t("notificationsRules") || "Rules", value: stats.totalRules.toLocaleString(), helper: t("notificationsRulesHelper") || "Automation recipes" },
-    { label: t("notificationsSentToday") || "Sent today", value: stats.sentToday.toLocaleString(), helper: t("notificationsSentHelper") || "24h deliveries" },
+    {
+      label: t("notificationsChannels") || "Channels",
+      value: formatNumber(stats.totalChannels, localeForDisplay),
+      helper: t("notificationsChannelsHelper") || "Configured endpoints",
+    },
+    {
+      label: t("notificationsRules") || "Rules",
+      value: formatNumber(stats.totalRules, localeForDisplay),
+      helper: t("notificationsRulesHelper") || "Automation recipes",
+    },
+    {
+      label: t("notificationsSentToday") || "Sent today",
+      value: formatNumber(stats.sentToday, localeForDisplay),
+      helper: t("notificationsSentHelper") || "24h deliveries",
+    },
   ];
 
   const heroAside = (
@@ -312,7 +386,7 @@ export default function Notifications() {
     refreshChannels();
     refreshRules();
     refreshHistory();
-    pushToast(t("notificationsRefreshing") || "Refreshing notification data");
+    pushToast(t("notificationsRefreshing") || "Refreshing notification data", "success");
   };
 
   const toolbar = (
@@ -331,11 +405,11 @@ export default function Notifications() {
         onChange={(e) => setChannelFilter(e.target.value)}
         options={[
           { value: "all", label: t("allChannels") || "All channels" },
-          { value: "EMAIL", label: "Email" },
-          { value: "SMS", label: "SMS" },
-          { value: "SLACK", label: "Slack" },
-          { value: "DISCORD", label: "Discord" },
-          { value: "WEBHOOK", label: "Webhook" },
+          { value: "EMAIL", label: t("channelEmail") || "Email" },
+          { value: "SMS", label: t("channelSMS") || "SMS" },
+          { value: "SLACK", label: t("channelSlack") || "Slack" },
+          { value: "DISCORD", label: t("channelDiscord") || "Discord" },
+          { value: "WEBHOOK", label: t("channelWebhook") || "Webhook" },
         ]}
         style={{ minWidth: 180 }}
       />
@@ -359,19 +433,20 @@ export default function Notifications() {
   );
 
   const actions = (
-    <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={() => setShowAddChannelModal(true)} disabled={!hasShopContext}>
+    <div className="stack-md wrap">
+      <Button type="button" className="full-width-mobile" onClick={() => setShowAddChannelModal(true)} disabled={!hasShopContext}>
         ➕ {t("addChannel") || "Add channel"}
       </Button>
-      <Button type="button" onClick={() => setShowAddRuleModal(true)} disabled={!hasShopContext}>
+      <Button type="button" className="full-width-mobile" onClick={() => setShowAddRuleModal(true)} disabled={!hasShopContext}>
         ⚙️ {t("addRule") || "Add rule"}
       </Button>
-      <Button type="button" variant="ghost" onClick={handleRefreshAll} disabled={!hasShopContext}>
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleRefreshAll} disabled={!hasShopContext}>
         ♻️ {t("refreshData") || "Refresh"}
       </Button>
       <Button
         type="button"
         variant="ghost"
+        className="full-width-mobile"
         onClick={() => {
           setHistorySearch("");
           setRuleSearch("");
@@ -395,15 +470,15 @@ export default function Notifications() {
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {[{
             label: t("activeChannels") || "Active channels",
-            value: `${stats.activeChannels}/${stats.totalChannels}`,
+            value: `${formatNumber(stats.activeChannels, localeForDisplay)}/${formatNumber(stats.totalChannels, localeForDisplay)}`,
             variant: "success" as const,
           }, {
             label: t("activeRules") || "Active rules",
-            value: `${stats.activeRules}/${stats.totalRules}`,
+            value: `${formatNumber(stats.activeRules, localeForDisplay)}/${formatNumber(stats.totalRules, localeForDisplay)}`,
             variant: "info" as const,
           }, {
             label: t("failedToday") || "Failures today",
-            value: stats.failedToday.toLocaleString(),
+            value: formatNumber(stats.failedToday, localeForDisplay),
             variant: stats.failedToday > 0 ? ("error" as const) : ("default" as const),
           }].map((item) => (
             <div key={item.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -442,7 +517,7 @@ export default function Notifications() {
               <div key={entry.id} style={{ border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)", padding: 12, background: "var(--color-surface)" }}>
                 <strong style={{ display: "block", fontSize: 13 }}>{entry.subject}</strong>
                 <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>
-                  {new Date(entry.sentAt).toLocaleString()}
+                  {formatDateTime(entry.sentAt, localeForDisplay)}
                 </span>
                 {entry.errorMessage && (
                   <p style={{ margin: "6px 0 0", fontSize: 12, color: "var(--color-error)" }}>{entry.errorMessage}</p>
@@ -459,7 +534,7 @@ export default function Notifications() {
     <>
       <PageLayout
         activeHref="/notifications"
-        title="🔔 Notification Center"
+        title={`🔔 ${t("notificationsTitle") || "Notification Center"}`}
         description={t("notificationsHeroSubtitle") || "Multi-channel alerts, automation rules, and delivery tracking"}
         heroBadge={heroBadge}
         heroAside={heroAside}
@@ -487,10 +562,31 @@ export default function Notifications() {
                   icon="📊"
                 />
                 <div className="grid grid-4" style={{ gap: 16 }}>
-                  <StatCard icon="📡" label={t("totalChannels") || "Total channels"} value={stats.totalChannels.toString()} color="primary" trend={stats.activeChannels} />
-                  <StatCard icon="⚙️" label={t("activeRules") || "Active rules"} value={stats.activeRules.toString()} color="info" />
-                  <StatCard icon="📤" label={t("sentToday") || "Sent today"} value={stats.sentToday.toString()} color="success" />
-                  <StatCard icon="⚠️" label={t("failedToday") || "Failed today"} value={stats.failedToday.toString()} color="error" />
+                  <StatCard
+                    icon="📡"
+                    label={t("totalChannels") || "Total channels"}
+                    value={formatNumber(stats.totalChannels, localeForDisplay)}
+                    color="primary"
+                    trend={stats.activeChannels}
+                  />
+                  <StatCard
+                    icon="⚙️"
+                    label={t("activeRules") || "Active rules"}
+                    value={formatNumber(stats.activeRules, localeForDisplay)}
+                    color="info"
+                  />
+                  <StatCard
+                    icon="📤"
+                    label={t("sentToday") || "Sent today"}
+                    value={formatNumber(stats.sentToday, localeForDisplay)}
+                    color="success"
+                  />
+                  <StatCard
+                    icon="⚠️"
+                    label={t("failedToday") || "Failed today"}
+                    value={formatNumber(stats.failedToday, localeForDisplay)}
+                    color="error"
+                  />
                 </div>
               </Card>
 
@@ -522,7 +618,7 @@ export default function Notifications() {
                                       <span style={{ fontSize: 28 }}>{getChannelIcon(channel.type)}</span>
                                       <div>
                                         <h4 style={{ margin: 0, fontSize: 16 }}>{channel.name}</h4>
-                                        <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "4px 0 0" }}>{channel.type}</p>
+                                        <p style={{ fontSize: 13, color: "var(--color-text-muted)", margin: "4px 0 0" }}>{getChannelLabel(channel.type)}</p>
                                       </div>
                                     </div>
                                     <Badge variant={channel.isActive ? "success" : "error"}>
@@ -530,7 +626,7 @@ export default function Notifications() {
                                     </Badge>
                                   </div>
                                   <div style={{ fontSize: 12, color: "var(--color-text-muted)", marginBottom: 16 }}>
-                                    {t("created") || "Created"}: {new Date(channel.createdAt).toLocaleDateString()}
+                                    {t("created") || "Created"}: {formatDate(channel.createdAt, localeForDisplay)}
                                   </div>
                                   <div style={{ display: "flex", gap: 8 }}>
                                     <Button variant="primary" size="sm" onClick={() => testChannel(channel.id)} disabled={!channel.isActive} fullWidth>
@@ -544,7 +640,13 @@ export default function Notifications() {
                                     >
                                       {channel.isActive ? t("disable") || "Disable" : t("enable") || "Enable"}
                                     </Button>
-                                    <Button variant="danger" size="sm" onClick={() => deleteChannel(channel.id)}>
+                                    <Button
+                                      variant="danger"
+                                      size="sm"
+                                      onClick={() => deleteChannel(channel.id)}
+                                      aria-label={t("deleteChannelAction") || "Delete channel"}
+                                      title={t("deleteChannelAction") || "Delete channel"}
+                                    >
                                       🗑️
                                     </Button>
                                   </div>
@@ -587,7 +689,10 @@ export default function Notifications() {
                                     return channel ? (
                                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                                         <span>{getChannelIcon(channel.type)}</span>
-                                        <span style={{ fontSize: 13 }}>{channel.name}</span>
+                                        <div>
+                                          <div style={{ fontSize: 13, fontWeight: 600 }}>{channel.name}</div>
+                                          <div style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{getChannelLabel(channel.type)}</div>
+                                        </div>
                                       </div>
                                     ) : (
                                       <span style={{ fontSize: 12, color: "var(--color-text-muted)" }}>{t("unknown") || "Unknown"}</span>
@@ -598,7 +703,7 @@ export default function Notifications() {
                                   key: "priority",
                                   header: t("priority") || "Priority",
                                   width: "120px",
-                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{row.priority}</Badge>,
+                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{getPriorityLabel(row.priority)}</Badge>,
                                 },
                                 {
                                   key: "status",
@@ -660,13 +765,13 @@ export default function Notifications() {
                                   key: "priority",
                                   header: t("priority") || "Priority",
                                   width: "110px",
-                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{row.priority}</Badge>,
+                                  render: (row: any) => <Badge variant={getPriorityColor(row.priority) as any}>{getPriorityLabel(row.priority)}</Badge>,
                                 },
                                 {
                                   key: "status",
                                   header: t("status") || "Status",
                                   width: "110px",
-                                  render: (row: any) => <Badge variant={getStatusColor(row.status) as any}>{row.status}</Badge>,
+                                  render: (row: any) => <Badge variant={getStatusColor(row.status) as any}>{getStatusLabel(row.status)}</Badge>,
                                 },
                                 {
                                   key: "channel",
@@ -674,10 +779,14 @@ export default function Notifications() {
                                   width: "140px",
                                   render: (row: any) => {
                                     const channel = channelsArray.find((c) => c.id === row.channelId);
+                                    const channelType = channel?.type || row.channelType || "UNKNOWN";
                                     return (
                                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                                        <span>{getChannelIcon(channel?.type || "UNKNOWN")}</span>
-                                        <span style={{ fontSize: 12 }}>{channel?.type || t("unknown") || "Unknown"}</span>
+                                        <span>{getChannelIcon(channelType)}</span>
+                                        <div>
+                                          <div style={{ fontSize: 12, fontWeight: 600 }}>{channel?.name || row.channelName || t("unknown") || "Unknown"}</div>
+                                          <div style={{ fontSize: 11, color: "var(--color-text-muted)" }}>{getChannelLabel(channelType)}</div>
+                                        </div>
                                       </div>
                                     );
                                   },
@@ -686,7 +795,11 @@ export default function Notifications() {
                                   key: "sentAt",
                                   header: t("sentAt") || "Sent at",
                                   width: "180px",
-                                  render: (row: any) => <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>{new Date(row.sentAt).toLocaleString()}</span>,
+                                  render: (row: any) => (
+                                    <span style={{ fontSize: 13, color: "var(--color-text-muted)" }}>
+                                      {formatDateTime(row.sentAt, localeForDisplay)}
+                                    </span>
+                                  ),
                                 },
                                 {
                                   key: "error",
@@ -729,36 +842,36 @@ export default function Notifications() {
           setShowAddChannelModal(false);
           setNewChannel({ name: "", type: "EMAIL", config: {} });
         }}
-        title={t("addNotificationChannel")}
+        title={t("addNotificationChannel") || "Add Notification Channel"}
       >
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
-            label="Channel Name"
+            label={t("channelName") || "Channel Name"}
             value={newChannel.name}
             onChange={(e) => setNewChannel({ ...newChannel, name: e.target.value })}
             placeholder={t("channelNamePlaceholder")}
           />
           <Select
-            label="Channel Type"
+            label={t("channelType") || "Channel Type"}
             value={newChannel.type}
             onChange={(e) => setNewChannel({ ...newChannel, type: e.target.value })}
             options={[
-              { value: "EMAIL", label: "📧 Email" },
-              { value: "SMS", label: "📱 SMS" },
-              { value: "SLACK", label: "💬 Slack" },
-              { value: "DISCORD", label: "🎮 Discord" },
-              { value: "WEBHOOK", label: "🔗 Webhook" }
+              { value: "EMAIL", label: `📧 ${t("channelEmail") || "Email"}` },
+              { value: "SMS", label: `📱 ${t("channelSMS") || "SMS"}` },
+              { value: "SLACK", label: `💬 ${t("channelSlack") || "Slack"}` },
+              { value: "DISCORD", label: `🎮 ${t("channelDiscord") || "Discord"}` },
+              { value: "WEBHOOK", label: `🔗 ${t("channelWebhook") || "Webhook"}` }
             ]}
           />
           <Alert variant="info">
-            Channel configuration can be set after creation
+            {t("channelConfigHint") || "Channel configuration can be set after creation"}
           </Alert>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <Button onClick={handleAddChannel} disabled={loading} fullWidth>
-              {loading ? 'Creating...' : 'Create Channel'}
+              {loading ? t("creatingChannel") || "Creating..." : t("createChannel") || "Create Channel"}
             </Button>
             <Button onClick={() => setShowAddChannelModal(false)} variant="ghost" fullWidth>
-              Cancel
+              {t("cancel") || "Cancel"}
             </Button>
           </div>
         </div>
@@ -771,55 +884,55 @@ export default function Notifications() {
           setShowAddRuleModal(false);
           setNewRule({ name: "", event: "ORDER_PLACED", channelId: "", priority: "MEDIUM", template: "" });
         }}
-        title={t("createNotificationRule")}
+        title={t("createNotificationRule") || "Create Notification Rule"}
         size="lg"
       >
         <div style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <Input
-            label="Rule Name"
+            label={t("ruleName") || "Rule Name"}
             value={newRule.name}
             onChange={(e) => setNewRule({ ...newRule, name: e.target.value })}
             placeholder={t("ruleNamePlaceholder")}
           />
           <Select
-            label="Trigger Event"
+            label={t("eventTrigger") || "Trigger Event"}
             value={newRule.event}
             onChange={(e) => setNewRule({ ...newRule, event: e.target.value })}
             options={[
-              { value: "ORDER_PLACED", label: "Order Placed" },
-              { value: "ORDER_PAID", label: "Order Paid" },
-              { value: "ORDER_SHIPPED", label: "Order Shipped" },
-              { value: "ORDER_FAILED", label: "Order Failed" },
-              { value: "LOW_STOCK", label: "Low Stock Alert" },
-              { value: "PRICE_CHANGE", label: "Price Changed" },
-              { value: "ERROR_OCCURRED", label: "Error Occurred" }
+              { value: "ORDER_PLACED", label: t("eventOrderPlaced") || "Order Placed" },
+              { value: "ORDER_PAID", label: t("eventOrderPaid") || "Order Paid" },
+              { value: "ORDER_SHIPPED", label: t("eventOrderShipped") || "Order Shipped" },
+              { value: "ORDER_FAILED", label: t("eventOrderFailed") || "Order Failed" },
+              { value: "LOW_STOCK", label: t("eventLowStock") || "Low Stock" },
+              { value: "PRICE_CHANGE", label: t("eventPriceChange") || "Price Change" },
+              { value: "ERROR_OCCURRED", label: t("eventError") || "Error" }
             ]}
           />
           <Select
-            label="Notification Channel"
+            label={t("notificationChannel") || "Notification Channel"}
             value={newRule.channelId}
             onChange={(e) => setNewRule({ ...newRule, channelId: e.target.value })}
             options={[
-              { value: "", label: "Select channel..." },
+              { value: "", label: t("selectChannelPlaceholder") || "Select channel..." },
               ...channelsArray.filter(c => c.isActive).map(c => ({
                 value: c.id,
-                label: `${getChannelIcon(c.type)} ${c.name} (${c.type})`
+                label: `${getChannelIcon(c.type)} ${c.name} (${getChannelLabel(c.type)})`
               }))
             ]}
           />
           <Select
-            label="Priority"
+            label={t("priority") || "Priority"}
             value={newRule.priority}
             onChange={(e) => setNewRule({ ...newRule, priority: e.target.value })}
             options={[
-              { value: "LOW", label: "🟢 Low" },
-              { value: "MEDIUM", label: "🟡 Medium" },
-              { value: "HIGH", label: "🟠 High" },
-              { value: "CRITICAL", label: "🔴 Critical" }
+              { value: "LOW", label: `🟢 ${t("priorityLow") || "Low"}` },
+              { value: "MEDIUM", label: `🟡 ${t("priorityMedium") || "Medium"}` },
+              { value: "HIGH", label: `🟠 ${t("priorityHigh") || "High"}` },
+              { value: "CRITICAL", label: `🔴 ${t("priorityCritical") || "Critical"}` }
             ]}
           />
           <div>
-            <label className="label">Message Template</label>
+            <label className="label">{t("messageTemplate") || "Message Template"}</label>
             <textarea
               className="input"
               value={newRule.template}
@@ -829,15 +942,15 @@ export default function Notifications() {
               style={{ width: '100%', resize: 'vertical', fontFamily: 'monospace', fontSize: '13px' }}
             />
             <p style={{ fontSize: '12px', color: 'var(--color-text-muted)', marginTop: '8px' }}>
-              Available variables: {'{'}{'{'} orderId {'}'}{'}'}, {'{'}{'{'} customerName {'}'}{'}'}, {'{'}{'{'} amount {'}'}{'}'}, {'{'}{'{'} status {'}'}{'}'}
+              {t("messageTemplateVariablesHint") || "Available variables: {{ orderId }}, {{ customerName }}, {{ amount }}, {{ status }}"}
             </p>
           </div>
           <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
             <Button onClick={handleAddRule} disabled={loading || !newRule.channelId} fullWidth>
-              {loading ? 'Creating...' : 'Create Rule'}
+              {loading ? t("creatingRule") || "Creating..." : t("createRule") || "Create Rule"}
             </Button>
             <Button onClick={() => setShowAddRuleModal(false)} variant="ghost" fullWidth>
-              Cancel
+              {t("cancel") || "Cancel"}
             </Button>
           </div>
         </div>

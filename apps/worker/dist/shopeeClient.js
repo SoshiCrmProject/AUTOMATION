@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.getShopInfo = getShopInfo;
 exports.fetchNewOrders = fetchNewOrders;
 exports.fetchOrderDetail = fetchOrderDetail;
 const node_fetch_1 = __importDefault(require("node-fetch"));
@@ -55,6 +56,10 @@ async function postShopee(cfg, path, body) {
         throw new Error(`Shopee ${path} failed [${errorCode}]: ${errorMsg} (request_id: ${requestId})`);
     }
     return json;
+}
+async function getShopInfo(cfg) {
+    const json = await postShopee(cfg, "/api/v2/shop/get_shop_info", {});
+    return json.response ?? {};
 }
 // Poll new orders using Shopee OpenAPI v2 get_order_list.
 async function fetchNewOrders(cfg, lastPolledAt) {

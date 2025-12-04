@@ -85,6 +85,11 @@ async function postShopee(cfg: ShopeeConfig, path: string, body: Record<string, 
   return json;
 }
 
+export async function getShopInfo(cfg: ShopeeConfig): Promise<Record<string, unknown>> {
+  const json: any = await postShopee(cfg, "/api/v2/shop/get_shop_info", {});
+  return json.response ?? {};
+}
+
 // Poll new orders using Shopee OpenAPI v2 get_order_list.
 export async function fetchNewOrders(cfg: ShopeeConfig, lastPolledAt?: Date): Promise<ShopeeOrder[]> {
   const timestamp = Math.floor(Date.now() / 1000);
