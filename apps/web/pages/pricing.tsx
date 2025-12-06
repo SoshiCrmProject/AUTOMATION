@@ -1,23 +1,31 @@
-import { FormEvent, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
+import useSWR from "swr";
 import PageLayout from "../components/PageLayout";
 import { Card, CardHeader, StatCard, Button, Alert, Badge, Input, Select, EmptyState } from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
+import api from "../lib/apiClient";
+
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 type RuleType = "FIXED_MARGIN" | "PERCENTAGE_MARKUP" | "COMPETITOR_MATCH" | "DYNAMIC_REPRICING";
 
 interface PricingRule {
   id: string;
+  shopId: string;
   name: string;
   ruleType: RuleType;
-  fixedMarkupAmount: number | null;
-  minMarginPercent: number | null;
-  maxMarginPercent: number | null;
+  fixedMarkupAmount?: number | null;
+  minMarginPercent?: number | null;
+  maxMarginPercent?: number | null;
   priority: number;
   isActive: boolean;
   applyToCategories: string[];
-  scheduleLabel: string;
+  scheduleLabel?: string | null;
+  competitorUrls?: string[];
+  priceFloor?: number | null;
+  priceCeiling?: number | null;
 }
 
 const RULE_TYPE_OPTIONS: { labelKey: string; value: RuleType; descriptionKey: string }[] = [
@@ -41,53 +49,19 @@ const formatPercent = (value: number | null | undefined, locale = "en-US", fract
 export default function PricingPage() {
   const { t, i18n } = useTranslation("common");
   const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
-  const sampleRules = useMemo<PricingRule[]>(
-    () => [
-      {
-        id: "rule-fixed-margin",
-        name: t("pricingSampleRuleFixedName") || "Top sellers +¥900 markup",
-        ruleType: "FIXED_MARGIN",
-        fixedMarkupAmount: 900,
-        minMarginPercent: null,
-        maxMarginPercent: null,
-        priority: 10,
-        isActive: true,
-        applyToCategories: [
-          t("pricingCategoryElectronics") || "Electronics",
-          t("pricingCategoryHome") || "Home"
-        ],
-        scheduleLabel: t("pricingRuleScheduleAlways") || "Always on"
-      },
-      {
-        id: "rule-percentage",
-        name: t("pricingSampleRulePercentName") || "New listings 18% margin",
-        ruleType: "PERCENTAGE_MARKUP",
-        fixedMarkupAmount: null,
-        minMarginPercent: 18,
-        maxMarginPercent: 25,
-        priority: 25,
-        isActive: true,
-        applyToCategories: [t("pricingCategoryBeauty") || "Beauty"],
-        scheduleLabel: t("pricingScheduleWeekdays") || "Weekdays"
-      },
-      {
-        id: "rule-competitor",
-        name: t("pricingSampleRuleCompetitorName") || "Competitor match -1%",
-        ruleType: "COMPETITOR_MATCH",
-        fixedMarkupAmount: null,
-        minMarginPercent: null,
-        maxMarginPercent: null,
-        priority: 40,
-        isActive: false,
-        applyToCategories: [t("pricingCategoryToys") || "Toys"],
-        scheduleLabel: t("pricingScheduleFlashSales") || "Flash sales"
-      }
-    ],
-    [t]
+  const { data: shops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
+  const [selectedShopId, setSelectedShopId] = useState<string>("");
+  const {
+    data: rulesData,
+    error: rulesError,
+    mutate: refreshPricingRules
+  } = useSWR<PricingRule[]>(
+    () => (selectedShopId ? `/api/pricing/${selectedShopId}` : null),
+    fetcher,
+    { shouldRetryOnError: false }
   );
-  const [rules, setRules] = useState<PricingRule[]>(sampleRules);
+  const rules = Array.isArray(rulesData) ? rulesData : [];
   const [saving, setSaving] = useState(false);
-  const usingSampleData = true;
   const [ruleSearch, setRuleSearch] = useState("");
   const [form, setForm] = useState({
     name: "",
@@ -99,6 +73,23 @@ export default function PricingPage() {
     categories: ""
   });
   const formRef = useRef<HTMLFormElement | null>(null);
+
+  useEffect(() => {
+    if (Array.isArray(shops) && shops.length > 0 && !selectedShopId) {
+      setSelectedShopId(shops[0].id?.toString() || "");
+    }
+  }, [shops, selectedShopId]);
+
+  const shopOptions = useMemo(
+    () =>
+      Array.isArray(shops)
+        ? shops.map((shop: any) => ({
+            value: shop?.id?.toString() || "",
+            label: shop?.name || shop?.id?.toString() || t("unknownShop") || "Shop"
+          }))
+        : [],
+    [shops, t]
+  );
 
   const summary = useMemo(() => {
     const activeRules = rules.filter((r) => r.isActive).length;
@@ -125,7 +116,8 @@ export default function PricingPage() {
     const term = ruleSearch.toLowerCase();
     return rules.filter((rule) => {
       const nameMatch = rule.name.toLowerCase().includes(term);
-      const categoryMatch = rule.applyToCategories.some((cat) => cat.toLowerCase().includes(term));
+      const categories = Array.isArray(rule.applyToCategories) ? rule.applyToCategories : [];
+      const categoryMatch = categories.some((cat) => cat.toLowerCase().includes(term));
       const typeLabel = (t(`pricingRuleTypeLabel.${rule.ruleType}`) || "").toLowerCase();
       return nameMatch || categoryMatch || typeLabel.includes(term);
     });
@@ -155,8 +147,8 @@ export default function PricingPage() {
   };
 
   const heroBadge = (
-    <Badge variant={usingSampleData ? "warning" : "success"}>
-      {usingSampleData ? t("pricingSampleDataBadge") || "Sample data" : t("pricingLiveDataBadge") || "Live data"}
+    <Badge variant={rules.length > 0 ? "success" : "warning"}>
+      {rules.length > 0 ? t("pricingLiveDataBadge") || "Live data" : t("pricingNoRulesBadge") || "No rules yet"}
     </Badge>
   );
 
@@ -206,7 +198,16 @@ export default function PricingPage() {
 
   const toolbar = (
     <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
-      <div style={{ flex: "1 1 240px", minWidth: 220 }}>
+      <div style={{ flex: "1 1 200px", minWidth: 200 }}>
+        <Select
+          label={t("shopId") || "Shop"}
+          value={selectedShopId}
+          onChange={(e) => setSelectedShopId(e.target.value)}
+          options={shopOptions.length ? shopOptions : [{ value: "", label: t("noShopsAvailable") || "No shops" }]}
+          disabled={!shopOptions.length}
+        />
+      </div>
+      <div style={{ flex: "2 1 240px", minWidth: 220 }}>
         <Input
           placeholder={t("pricingRuleSearchPlaceholder") || "Search rules by name, category, or type"}
           value={ruleSearch}
@@ -222,13 +223,13 @@ export default function PricingPage() {
 
   const actions = (
     <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-      <Button type="button" onClick={scrollToForm}>
+      <Button type="button" onClick={scrollToForm} disabled={!selectedShopId}>
         ➕ {t("pricingRuleCreate") || "New rule"}
       </Button>
-      <Button type="button" variant="ghost" onClick={() => applyTemplate("FIXED_MARGIN")}>
+      <Button type="button" variant="ghost" onClick={() => applyTemplate("FIXED_MARGIN")} disabled={!selectedShopId}>
         📈 {t("pricingFixedTemplate") || "Fixed margin template"}
       </Button>
-      <Button type="button" variant="ghost" onClick={() => applyTemplate("COMPETITOR_MATCH")}>
+      <Button type="button" variant="ghost" onClick={() => applyTemplate("COMPETITOR_MATCH")} disabled={!selectedShopId}>
         🤝 {t("pricingCompetitorTemplate") || "Competitor match template"}
       </Button>
     </div>
@@ -288,48 +289,61 @@ export default function PricingPage() {
       pushToast(t("fieldRequired"), "error");
       return;
     }
+    if (!selectedShopId) {
+      pushToast(t("selectShopToLoad") || "Select a shop first", "error");
+      return;
+    }
     setSaving(true);
-    const newRule: PricingRule = {
-      id: crypto.randomUUID(),
-      name: form.name.trim(),
-      ruleType: form.ruleType,
-      fixedMarkupAmount: form.ruleType === "FIXED_MARGIN" ? Number(form.fixedMarkupAmount) : null,
-      minMarginPercent: form.ruleType === "PERCENTAGE_MARKUP" ? Number(form.minMarginPercent) : null,
-      maxMarginPercent: form.ruleType === "PERCENTAGE_MARKUP" ? Number(form.maxMarginPercent) : null,
-      priority: Number(form.priority) || 50,
-      isActive: true,
-      applyToCategories: form.categories ? form.categories.split(",").map((c) => c.trim()).filter(Boolean) : [],
-      scheduleLabel: t("pricingRuleScheduleAlways")
-    };
-
-    setRules((prev) => [newRule, ...prev]);
-    setForm({
-      name: "",
-      ruleType: form.ruleType,
-      minMarginPercent: 15,
-      maxMarginPercent: 25,
-      fixedMarkupAmount: 500,
-      priority: 50,
-      categories: ""
-    });
-    pushToast(t("pricingRuleCreated"), "success");
-    setSaving(false);
+    try {
+      await api.post("/api/pricing", {
+        shopId: selectedShopId,
+        name: form.name.trim(),
+        ruleType: form.ruleType,
+        isActive: true,
+        priority: Number(form.priority) || 50,
+        fixedMarkupAmount: form.ruleType === "FIXED_MARGIN" ? Number(form.fixedMarkupAmount) : undefined,
+        minMarginPercent: form.ruleType === "PERCENTAGE_MARKUP" ? Number(form.minMarginPercent) : undefined,
+        maxMarginPercent: form.ruleType === "PERCENTAGE_MARKUP" ? Number(form.maxMarginPercent) : undefined,
+        applyToCategories: form.categories
+          ? form.categories.split(",").map((c) => c.trim()).filter(Boolean)
+          : []
+      });
+      setForm({
+        name: "",
+        ruleType: form.ruleType,
+        minMarginPercent: 15,
+        maxMarginPercent: 25,
+        fixedMarkupAmount: 500,
+        priority: 50,
+        categories: ""
+      });
+      pushToast(t("pricingRuleCreated"), "success");
+      await refreshPricingRules();
+    } catch (error: any) {
+      pushToast(error?.response?.data?.error || t("pricingRuleCreateFailed") || "Failed to create rule", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const toggleRule = (ruleId: string) => {
-    setRules((prev) =>
-      prev.map((rule) =>
-        rule.id === ruleId
-          ? { ...rule, isActive: !rule.isActive }
-          : rule
-      )
-    );
-    pushToast(t("pricingRuleUpdated"), "success");
+  const toggleRule = async (rule: PricingRule) => {
+    try {
+      await api.put(`/api/pricing/${rule.id}`, { isActive: !rule.isActive });
+      pushToast(t("pricingRuleUpdated"), "success");
+      await refreshPricingRules();
+    } catch (error: any) {
+      pushToast(error?.response?.data?.error || t("pricingRuleUpdateFailed") || "Failed to update rule", "error");
+    }
   };
 
-  const removeRule = (ruleId: string) => {
-    setRules((prev) => prev.filter((rule) => rule.id !== ruleId));
-    pushToast(t("pricingRuleDeleted"), "success");
+  const removeRule = async (rule: PricingRule) => {
+    try {
+      await api.delete(`/api/pricing/${rule.id}`);
+      pushToast(t("pricingRuleDeleted"), "success");
+      await refreshPricingRules();
+    } catch (error: any) {
+      pushToast(error?.response?.data?.error || t("pricingRuleDeleteFailed") || "Failed to delete rule", "error");
+    }
   };
 
   return (
@@ -347,9 +361,15 @@ export default function PricingPage() {
         heroBackground="linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)"
       >
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-          {usingSampleData && (
-            <Alert variant="info" title={t("pricingRuleSampleNotice") || "Sample data enabled"}>
-              {t("pricingSampleDataNotice") || "Connect your shop to activate live automation."}
+          {!selectedShopId && (
+            <Alert variant="info" title={t("selectShopToLoad") || "Select a shop"}>
+              {t("pricingSelectShopInstruction") || "Choose a shop to view and manage pricing rules."}
+            </Alert>
+          )}
+
+          {rulesError && (
+            <Alert variant="error" title={t("pricingRuleLoadFailed") || "Failed to load rules"}>
+              {rulesError.message}
             </Alert>
           )}
 
@@ -468,7 +488,7 @@ export default function PricingPage() {
                         : t("pricingRuleEmptyDescription") || "Create your first automation to keep prices on target."
                     }
                     action={
-                      <Button type="button" onClick={scrollToForm}>
+                      <Button type="button" onClick={scrollToForm} disabled={!selectedShopId}>
                         ➕ {t("pricingRuleCreate") || "Create rule"}
                       </Button>
                     }
@@ -476,9 +496,11 @@ export default function PricingPage() {
                 </div>
               ) : (
                 <div style={{ padding: 24, display: "flex", flexDirection: "column", gap: 16 }}>
-                  {filteredRules.map((rule) => (
-                    <div
-                      key={rule.id}
+                  {filteredRules.map((rule) => {
+                    const categories = Array.isArray(rule.applyToCategories) ? rule.applyToCategories : [];
+                    return (
+                      <div
+                        key={rule.id}
                       style={{
                         border: "1px solid var(--color-border)",
                         borderRadius: "var(--radius-lg)",
@@ -508,24 +530,25 @@ export default function PricingPage() {
                         {rule.minMarginPercent && (
                           <Badge variant="info">{t("pricingRuleMinMarginShort", { value: rule.minMarginPercent })}</Badge>
                         )}
-                        {rule.applyToCategories.length > 0 ? (
-                          <Badge variant="default">{t("pricingRuleScope", { value: rule.applyToCategories.join(", ") })}</Badge>
+                        {categories.length > 0 ? (
+                          <Badge variant="default">{t("pricingRuleScope", { value: categories.join(", ") })}</Badge>
                         ) : (
                           <Badge variant="default">{t("pricingRuleNoCategories") || "All categories"}</Badge>
                         )}
-                        <Badge variant="info">{rule.scheduleLabel}</Badge>
+                        <Badge variant="info">{rule.scheduleLabel || t("pricingRuleScheduleAlways") || "Always on"}</Badge>
                       </div>
 
                       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => toggleRule(rule.id)}>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => toggleRule(rule)}>
                           {rule.isActive ? t("pricingRulePause") : t("pricingRuleResume")}
                         </Button>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => removeRule(rule.id)}>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => removeRule(rule)}>
                           {t("pricingRuleDelete")}
                         </Button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </Card>

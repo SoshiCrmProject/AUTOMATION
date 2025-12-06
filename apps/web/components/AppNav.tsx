@@ -77,6 +77,7 @@ export default function AppNav({ activeHref }: { activeHref?: string }) {
       { href: "/inventory", label: t("navInventory"), icon: "📦" },
       { href: "/crm", label: t("navCRM"), icon: "👥" },
       { href: "/orders", label: t("navOrders"), icon: "🛒" },
+      { href: "/manual-orders", label: t("navManualOrders"), icon: "📮" },
       { href: "/calculator", label: t("navCalculator"), icon: "💰" },
       { href: "/scraper", label: t("navScraper"), icon: "🔍" },
       { href: "/settings", label: t("navSettings"), icon: "⚙️" },

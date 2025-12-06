@@ -1,6 +1,6 @@
 import { Worker, Queue } from "bullmq";
 import dotenv from "dotenv";
-import { Prisma, PrismaClient, ProcessingStatus, ProcessingMode, AutoFulfillmentMode, AmazonOrderStatus, ShopeeStatus } from "@prisma/client";
+import { Prisma, PrismaClient, ProcessingStatus, ProcessingMode, AutoFulfillmentMode, AmazonOrderStatus, ShopeeStatus, ManualOrderStatus } from "@prisma/client";
 import { calculateProfit, classifyFulfillmentDecision, calculateShippingDays } from "@shopee-amazon/shared";
 import fetch from "node-fetch";
 import { decryptSecret } from "./secret";
@@ -37,6 +37,11 @@ type ProcessOrderJob = {
   shopeeOrderId: string;
   shopId: string;
   retrySource?: string;
+};
+
+type ProcessManualOrderJob = {
+  manualOrderId: string;
+  shopId: string;
 };
 
 type ScrapePreviewJobResult =
@@ -94,6 +99,9 @@ new Worker(
     }
     if (job.name === "scrape-preview") {
       return runScrapePreview(job.data.productUrl as string);
+    }
+    if (job.name === "process-manual-order") {
+      return processManualOrder(job.data as ProcessManualOrderJob);
     }
     // Polling and test scrape stubs intentionally no-op for now
   },
@@ -318,11 +326,34 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
   // Placeholder for real Playwright checkout:
   try {
     const amazonPassword = decryptSecret(amazonCred.passwordEncrypted, amazonCred.encryptionIv, AES_KEY);
+    // Resolve shipping label: prefer setting.defaultShippingProfileId -> env -> fallback
+    let shippingLabelForAuto = process.env.AMAZON_SHIPPING_LABEL ?? "Shopee Warehouse";
+    if (setting?.defaultShippingProfileId) {
+      const profile = await prisma.shippingProfile.findUnique({ where: { id: setting.defaultShippingProfileId } });
+      if (profile && profile.amazonAddressLabel) shippingLabelForAuto = profile.amazonAddressLabel;
+    }
+    // Load full profile if available to allow automation to add/fill addresses
+    let profileForAuto: any = undefined;
+    if (setting?.defaultShippingProfileId) {
+      profileForAuto = await prisma.shippingProfile.findUnique({ where: { id: setting.defaultShippingProfileId } });
+    }
     const orderResult = await purchaseAmazonProduct({
       productUrl: amazonUrl,
-      shippingAddressLabel: process.env.AMAZON_SHIPPING_LABEL ?? "Shopee Warehouse",
+      shippingAddressLabel: shippingLabelForAuto,
       loginEmail: amazonCred.username,
-      loginPassword: amazonPassword
+      loginPassword: amazonPassword,
+      shippingProfile: profileForAuto ? {
+        label: profileForAuto.label,
+        contactName: profileForAuto.contactName,
+        phone: profileForAuto.phone,
+        addressLine1: profileForAuto.addressLine1,
+        addressLine2: profileForAuto.addressLine2 ?? undefined,
+        city: profileForAuto.city,
+        state: profileForAuto.state ?? undefined,
+        postalCode: profileForAuto.postalCode,
+        country: profileForAuto.country,
+        amazonAddressLabel: profileForAuto.amazonAddressLabel
+      } : undefined
     });
     await prisma.amazonOrder.create({
       data: {
@@ -367,6 +398,133 @@ async function processOrder({ shopeeOrderId, shopId, retrySource }: ProcessOrder
     });
   } finally {
     await cleanupScrape();
+  }
+}
+
+async function processManualOrder({ manualOrderId, shopId }: ProcessManualOrderJob) {
+  const manualOrder = await prisma.manualAmazonOrder.findUnique({
+    where: { id: manualOrderId },
+    include: { shop: { include: { amazonCredential: true } }, shippingProfile: true }
+  });
+  if (!manualOrder || manualOrder.shopId !== shopId) {
+    return;
+  }
+
+  if (![ManualOrderStatus.PENDING, ManualOrderStatus.PROCESSING].includes(manualOrder.status)) {
+    return;
+  }
+
+  const markFailed = async (code: string, reason: string) => {
+    await prisma.manualAmazonOrder.update({
+      where: { id: manualOrderId },
+      data: {
+        status: ManualOrderStatus.FAILED,
+        failureCode: code,
+        failureReason: reason.slice(0, 500)
+      }
+    });
+    await sendAlert(code, reason, { shopId, orderNumber: manualOrderId });
+  };
+
+  if (!AES_KEY) {
+    await markFailed("MISSING_AES_KEY", "Missing AES secret key for decrypting Amazon credentials");
+    return;
+  }
+
+  const amazonCred = manualOrder.shop?.amazonCredential;
+  if (!amazonCred) {
+    await markFailed("MISSING_AMAZON_CREDENTIALS", "Amazon credentials not configured for this shop");
+    return;
+  }
+
+  const shippingLabel = (manualOrder.shippingProfile ? manualOrder.shippingProfile.amazonAddressLabel : null) || manualOrder.shippingAddressLabel?.trim() || manualOrder.buyerName?.trim();
+  if (!shippingLabel) {
+    await markFailed("MISSING_SHIPPING_LABEL", "Shipping address label is required before processing manual orders");
+    return;
+  }
+
+  await prisma.manualAmazonOrder.update({
+    where: { id: manualOrderId },
+    data: {
+      status: ManualOrderStatus.PROCESSING,
+      failureCode: null,
+      failureReason: null
+    }
+  });
+
+  const orderIds: string[] = [];
+  let recordedPrice: Prisma.Decimal | null = null;
+
+  try {
+    const amazonPassword = decryptSecret(amazonCred.passwordEncrypted, amazonCred.encryptionIv, AES_KEY);
+    const attempts = Math.max(1, manualOrder.quantity);
+    for (let i = 0; i < attempts; i++) {
+      const result = await purchaseAmazonProduct({
+        productUrl: manualOrder.productUrl,
+        shippingAddressLabel: shippingLabel,
+        loginEmail: amazonCred.username,
+        loginPassword: amazonPassword,
+        shippingProfile: manualOrder.shippingProfile ? {
+          label: manualOrder.shippingProfile.label,
+          contactName: manualOrder.shippingProfile.contactName,
+          phone: manualOrder.shippingProfile.phone,
+          addressLine1: manualOrder.shippingProfile.addressLine1,
+          addressLine2: manualOrder.shippingProfile.addressLine2 ?? undefined,
+          city: manualOrder.shippingProfile.city,
+          state: manualOrder.shippingProfile.state ?? undefined,
+          postalCode: manualOrder.shippingProfile.postalCode,
+          country: manualOrder.shippingProfile.country,
+          amazonAddressLabel: manualOrder.shippingProfile.amazonAddressLabel
+        } : undefined
+      });
+      if (result.amazonOrderId) {
+        orderIds.push(result.amazonOrderId);
+      }
+      if (typeof result.finalPrice === "number" && !Number.isNaN(result.finalPrice)) {
+        const decimalPrice = new Prisma.Decimal(result.finalPrice);
+        recordedPrice = recordedPrice ? recordedPrice.add(decimalPrice) : decimalPrice;
+      }
+    }
+
+    const updateData: Prisma.ManualAmazonOrderUpdateInput = {
+      status: ManualOrderStatus.FULFILLED,
+      processedAt: new Date(),
+      failureCode: null,
+      failureReason: null
+    };
+
+    if (orderIds.length) {
+      updateData.amazonOrderId = orderIds.join(",");
+    }
+    if (recordedPrice) {
+      updateData.purchasePrice = recordedPrice;
+    }
+
+    await prisma.manualAmazonOrder.update({
+      where: { id: manualOrderId },
+      data: updateData
+    });
+  } catch (err: any) {
+    const code = err instanceof AutomationError ? err.code : "MANUAL_ORDER_FAILED";
+    const message = err instanceof AutomationError ? err.message : err?.message ?? "Manual order automation failed";
+
+    const failureUpdate: Prisma.ManualAmazonOrderUpdateInput = {
+      status: ManualOrderStatus.FAILED,
+      failureCode: code,
+      failureReason: message.slice(0, 500)
+    };
+    if (orderIds.length) {
+      failureUpdate.amazonOrderId = orderIds.join(",");
+    }
+    if (recordedPrice) {
+      failureUpdate.purchasePrice = recordedPrice;
+    }
+
+    await prisma.manualAmazonOrder.update({
+      where: { id: manualOrderId },
+      data: failureUpdate
+    });
+    await sendAlert(code, message, { shopId, orderNumber: manualOrderId });
   }
 }
 

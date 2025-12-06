@@ -1,10 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
+import useSWR from "swr";
 import api from "../lib/apiClient";
 import PageLayout from "../components/PageLayout";
 import { Card, CardHeader, Button, Badge, Input, Alert, EmptyState } from "../components/ui/index";
 import Toast, { pushToast } from "../components/Toast";
+
+const fetcher = (url: string) => api.get(url).then((res) => res.data);
 
 type ProfitResult = {
   profit: number;
@@ -14,6 +17,12 @@ type ProfitResult = {
   fees: number;
   shipping: number;
   isViable: boolean;
+};
+
+type AutomationSettings = {
+  includeAmazonPoints: boolean;
+  includeDomesticShipping: boolean;
+  domesticShippingCost: number;
 };
 
 type BadgeTone = "info" | "success" | "warning" | "error" | "default";
@@ -41,6 +50,11 @@ const formatPercent = (value: number | null | undefined, locale = "en-US") => {
 export default function ProfitCalculatorPage() {
   const { t, i18n } = useTranslation("common");
   const localeForDisplay = i18n.language === "ja" ? "ja-JP" : "en-US";
+  const { data: automationSettings } = useSWR<AutomationSettings>("/settings", fetcher, {
+    shouldRetryOnError: false,
+    revalidateOnFocus: false
+  });
+  const settingsHydrated = useRef(false);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<ProfitResult | null>(null);
   
@@ -79,20 +93,13 @@ export default function ProfitCalculatorPage() {
     }
   }, [t]);
 
-  const applySampleScenario = () => {
-    setShopeePrice(7200);
-    setShopeeShipping(450);
-    setShopeeFees(580);
-    setAmazonPrice(5200);
-    setAmazonShipping(420);
-    setAmazonTax(320);
-    setAmazonPoints(420);
-    setIncludePoints(true);
-    setIncludeDomesticShipping(true);
-    setDomesticShippingCost(650);
-    setResult(null);
-    pushToast(t("sampleScenarioApplied") || "Sample scenario applied", "success");
-  };
+  useEffect(() => {
+    if (!automationSettings || settingsHydrated.current) return;
+    setIncludePoints(Boolean(automationSettings.includeAmazonPoints));
+    setIncludeDomesticShipping(Boolean(automationSettings.includeDomesticShipping));
+    setDomesticShippingCost(automationSettings.domesticShippingCost || 0);
+    settingsHydrated.current = true;
+  }, [automationSettings]);
 
   const openDocumentation = () => {
     if (typeof window !== "undefined") {
@@ -102,6 +109,17 @@ export default function ProfitCalculatorPage() {
         "noopener,noreferrer"
       );
     }
+  };
+
+  const handleSyncGuardrails = () => {
+    if (!automationSettings) {
+      pushToast(t("guardrailsNotLoaded") || "Load settings first", "error");
+      return;
+    }
+    setIncludePoints(Boolean(automationSettings.includeAmazonPoints));
+    setIncludeDomesticShipping(Boolean(automationSettings.includeDomesticShipping));
+    setDomesticShippingCost(automationSettings.domesticShippingCost || 0);
+    pushToast(t("guardrailsSynced") || "Guardrails synced from settings", "success");
   };
 
   const calculateProfit = async () => {
@@ -202,8 +220,8 @@ export default function ProfitCalculatorPage() {
 
   const heroActions = (
     <div className="stack-md wrap">
-      <Button type="button" variant="ghost" className="full-width-mobile" onClick={applySampleScenario}>
-        🧪 {t("useSampleData") || "Use sample data"}
+      <Button type="button" variant="ghost" className="full-width-mobile" onClick={handleSyncGuardrails}>
+        🔄 {t("syncGuardrails") || "Sync guardrails"}
       </Button>
       <Button type="button" variant="ghost" className="full-width-mobile" onClick={openDocumentation}>
         📘 {t("openTroubleshootingGuide") || "Troubleshooting guide"}

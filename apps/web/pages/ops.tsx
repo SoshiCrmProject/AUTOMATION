@@ -23,6 +23,8 @@ type Feedback = {
   text: string;
 };
 
+const LAST_TEST_URL_KEY = "lastOpsProductUrl";
+
 export default function OpsPage() {
   const { t } = useTranslation("common");
   const [queue, setQueue] = useState<QueueHealth | null>(null);
@@ -32,6 +34,7 @@ export default function OpsPage() {
   const [testing, setTesting] = useState(false);
   const [health, setHealth] = useState<{ status: string; timestamp: string } | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [lastQueuedUrl, setLastQueuedUrl] = useState<string | null>(null);
 
   const load = async () => {
     setLoadingQueue(true);
@@ -49,6 +52,12 @@ export default function OpsPage() {
 
   useEffect(() => {
     load();
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem(LAST_TEST_URL_KEY);
+      if (cached) {
+        setLastQueuedUrl(cached);
+      }
+    }
   }, []);
 
   const testScrape = async () => {
@@ -66,6 +75,8 @@ export default function OpsPage() {
         ? `${t("testScrapeQueued") || "Amazon scrape queued"} · ¥${details.price.toLocaleString()}`
         : t("testScrapeQueued") || "Amazon scrape queued";
       setFeedback({ type: "success", text: summary });
+      localStorage.setItem(LAST_TEST_URL_KEY, normalizedUrl);
+      setLastQueuedUrl(normalizedUrl);
     } catch (e: any) {
       const code = e?.response?.data?.code;
       const message = e?.response?.data?.error ?? (t("genericError") || "Unable to queue test");
@@ -230,13 +241,14 @@ export default function OpsPage() {
         <Button
           type="button"
           variant="ghost"
-          onClick={() =>
-            setProductUrl(
-              "https://www.amazon.com/dp/B0C1234567"
-            )
-          }
+          disabled={!lastQueuedUrl}
+          onClick={() => {
+            if (!lastQueuedUrl) return;
+            setProductUrl(lastQueuedUrl);
+            setFeedback({ type: "info", text: t("lastTestUrlApplied") || "Loaded last tested URL" });
+          }}
         >
-          {t("useSampleProduct") || "Use sample URL"}
+          {lastQueuedUrl ? t("reuseLastTestUrl") || "Reuse last tested URL" : t("noRecentTestUrl") || "No recent test saved"}
         </Button>
       </div>
     </Card>

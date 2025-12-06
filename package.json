@@ -10,6 +10,8 @@
     "packages/shared"
   ],
   "scripts": {
+    "test:integration:docker": "docker-compose -f docker-compose.test.yml up -d --build && node ./scripts/wait-for-services.js && npm run test:integration && docker-compose -f docker-compose.test.yml down",
+    "test:integration": "cross-env DATABASE_URL=postgresql://test:test@localhost:5433/automation_test?schema=public REDIS_URL=redis://localhost:6380 jest --selectProjects api --runInBand",
     "dev:api": "cd apps/api && ts-node-dev --respawn --transpile-only src/index.ts",
     "dev:web": "cd apps/web && next dev -p 3000",
     "dev:worker": "cd apps/worker && ts-node-dev --respawn --transpile-only src/index.ts",
@@ -39,6 +41,9 @@
     "lint-staged": "^16.2.7",
     "prettier": "^3.7.1",
     "ts-jest": "^29.4.5",
+    "supertest": "^6.3.3",
+    "@types/supertest": "^2.0.12",
+    "cross-env": "^7.0.3",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.3.3"
   }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
 import api from "../lib/apiClient";
@@ -29,6 +29,15 @@ export default function ProductScraperPage() {
   const [error, setError] = useState<string | null>(null);
   const [scrapeAttempts, setScrapeAttempts] = useState(0);
   const [lastSuccessAt, setLastSuccessAt] = useState<string | null>(null);
+  const [lastUsedUrl, setLastUsedUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("lastScraperUrl");
+    if (stored) {
+      setLastUsedUrl(stored);
+    }
+  }, []);
 
   const buildFallbackResult = (seedUrl: string): ScrapeResult => {
     const sanitized = deriveFallbackAsin(seedUrl);
@@ -79,6 +88,8 @@ export default function ProductScraperPage() {
       const normalized = coerceScrapeResult(response.data?.result, normalizedUrl);
       setResult(normalized);
       setLastSuccessAt(new Date().toISOString());
+      localStorage.setItem("lastScraperUrl", normalized.productUrl);
+      setLastUsedUrl(normalized.productUrl);
       pushToast(response.data?.message || t("scrapingComplete"), "success");
     } catch (error: any) {
       const errorCode = error.response?.data?.code;
@@ -111,10 +122,10 @@ export default function ProductScraperPage() {
     setError(null);
   };
 
-  const applySampleUrl = () => {
-    const sample = "https://www.amazon.co.jp/dp/B0C7LXYZ12";
-    setProductUrl(sample);
-    pushToast(t("sampleUrlApplied") || "Sample URL applied", "success");
+  const reuseLastUrl = () => {
+    if (!lastUsedUrl) return;
+    setProductUrl(lastUsedUrl);
+    pushToast(t("lastScrapeUrlApplied") || "Loaded last scraped URL", "success");
   };
 
   const heroStats = useMemo(
@@ -199,8 +210,8 @@ export default function ProductScraperPage() {
           hint={t("mustBeValidAmazonURL")}
         />
       </div>
-      <Button variant="ghost" className="full-width-mobile" onClick={applySampleUrl}>
-        {t("useSampleUrl") || "Use sample URL"}
+      <Button variant="ghost" className="full-width-mobile" onClick={reuseLastUrl} disabled={!lastUsedUrl}>
+        {lastUsedUrl ? t("reuseLastScrapeUrl") || "Reuse last scraped URL" : t("noRecentScrape") || "No recent scrape saved"}
       </Button>
     </div>
   );

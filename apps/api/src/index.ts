@@ -3,7 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import dotenv from "dotenv";
-import { PrismaClient, UserRole, AutoFulfillmentMode, ProcessingStatus, ProcessingMode, AmazonOrderStatus } from "@prisma/client";
+import { PrismaClient, Prisma, UserRole, AutoFulfillmentMode, ProcessingStatus, ProcessingMode, AmazonOrderStatus, ManualOrderStatus } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
 import { Queue, QueueEvents } from "bullmq";
@@ -52,7 +52,27 @@ app.use(
   })
 );
 
-const prisma = new PrismaClient();
+export const prisma = new PrismaClient();
+
+async function ensurePrimaryShop(userId: string, fallbackName?: string) {
+  const existing = await prisma.shop.findFirst({
+    where: { ownerId: userId },
+    orderBy: { createdAt: "asc" }
+  });
+  if (existing) {
+    return existing;
+  }
+  const placeholderId = `manual-${userId.slice(0, 8)}-${Date.now().toString(36)}`;
+  return prisma.shop.create({
+    data: {
+      ownerId: userId,
+      name: fallbackName ?? "Primary Automation Shop",
+      shopeeShopId: placeholderId,
+      shopeeRegion: "AMAZON",
+      isActive: true
+    }
+  });
+}
 const redisUrl = new URL(process.env.REDIS_URL ?? "redis://localhost:6379");
 const redisConnection: RedisOptions = {
   host: redisUrl.hostname,
@@ -97,6 +117,67 @@ const amazonScrapeLimiter = rateLimit({
   keyGenerator: (req) => (req as AuthenticatedRequest).userId ?? req.ip ?? "anon",
   handler: (_req, res) => res.status(429).json({ error: "Amazon scrape rate limit exceeded" })
 });
+
+const manualOrderInputSchema = z.object({
+  shopId: z.string().optional(),
+  productUrl: z.string().url(),
+  asin: z.string().regex(/^[A-Z0-9]{10}$/i, "Invalid ASIN").optional(),
+  quantity: z.coerce.number().int().min(1).max(10).default(1),
+  notes: z.string().max(500).optional(),
+  buyerName: z.string().min(2).max(120),
+  phone: z.string().min(5).max(20),
+  addressLine1: z.string().min(3).max(200),
+  addressLine2: z.string().max(200).optional(),
+  city: z.string().min(2).max(120),
+  state: z.string().max(120).optional(),
+  postalCode: z.string().min(3).max(20),
+  country: z.string().min(2).max(60).optional(),
+  shippingAddressLabel: z.string().min(2).max(80).optional(),
+  purchasePrice: z.coerce.number().positive().max(1_000_000).optional(),
+  shippingProfileId: z.string().optional()
+});
+
+const manualOrderListSchema = z.object({
+  status: z.nativeEnum(ManualOrderStatus).optional(),
+  shopId: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional()
+});
+
+const manualOrderCancelSchema = z.object({
+  reason: z.string().max(200).optional()
+});
+
+const shippingProfileInputSchema = z.object({
+  shopId: z.string(),
+  label: z.string().min(2).max(80),
+  contactName: z.string().min(2).max(120),
+  phone: z.string().min(5).max(20),
+  addressLine1: z.string().min(3).max(200),
+  addressLine2: z.string().max(200).optional(),
+  city: z.string().min(2).max(120),
+  state: z.string().max(120).optional(),
+  postalCode: z.string().min(3).max(20),
+  country: z.string().min(2).max(60).default("JP"),
+  amazonAddressLabel: z.string().min(2).max(80),
+  instructions: z.string().max(500).optional(),
+  isDefault: z.boolean().optional(),
+  isActive: z.boolean().optional()
+});
+
+const extractAsinFromUrl = (input: string): string | null => {
+  try {
+    const asinMatch = input.match(/(?:dp|gp\/product|product)\/([A-Z0-9]{10})/i);
+    if (asinMatch?.[1]) {
+      return asinMatch[1].toUpperCase();
+    }
+    const url = new URL(input);
+    const asin = url.searchParams.get("asin");
+    return asin ? asin.toUpperCase() : null;
+  } catch (_err) {
+    return null;
+  }
+};
 
 function authMiddleware(
   req: AuthenticatedRequest,
@@ -176,20 +257,27 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
 }));
 
 app.get("/shops", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
-  const shops = await prisma.shop.findMany({
+  let shops = await prisma.shop.findMany({
     where: { ownerId: req.userId },
     orderBy: { name: "asc" }
   });
+  if ((!shops || shops.length === 0) && req.userId) {
+    const fallback = await ensurePrimaryShop(req.userId);
+    shops = [fallback];
+  }
   res.json(shops);
 }));
 
 app.get("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
-  const shop = await prisma.shop.findFirst({ 
+  let shop = await prisma.shop.findFirst({ 
     where: { ownerId: req.userId, isActive: true }, 
     include: { setting: true },
     orderBy: { createdAt: 'asc' }
   });
-  
+  if (!shop && req.userId) {
+    shop = await ensurePrimaryShop(req.userId);
+    shop = await prisma.shop.findFirst({ where: { id: shop.id }, include: { setting: true } }) ?? shop;
+  }
   if (!shop || !shop.setting) {
     return res.json({
       includeAmazonPoints: false,
@@ -197,10 +285,12 @@ app.get("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedReque
       domesticShippingCost: 0,
       maxShippingDays: 7,
       minExpectedProfit: 0,
-      shopIds: [],
+      shopIds: shop ? [shop.id] : [],
       isActive: false,
       isDryRun: true,
-      reviewBandPercent: 0
+      reviewBandPercent: 0,
+      defaultShippingAddressLabel: null,
+      defaultShippingProfileId: null
     });
   }
   
@@ -213,13 +303,15 @@ app.get("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedReque
     shopIds: [shop.id],
     isActive: shop.setting.isActive,
     isDryRun: shop.setting.isDryRun,
-    reviewBandPercent: Number(shop.setting.reviewBandPercent || 0)
+    reviewBandPercent: Number(shop.setting.reviewBandPercent || 0),
+    defaultShippingAddressLabel: shop.setting.defaultShippingAddressLabel ?? null,
+    defaultShippingProfileId: shop.setting.defaultShippingProfileId ?? null
   });
 }));
 
 app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const schema = z.object({
-    shopId: z.string(),
+    shopId: z.string().optional(),
     isActive: z.boolean(),
     isDryRun: z.boolean().default(false),
     autoFulfillmentMode: z.nativeEnum(AutoFulfillmentMode),
@@ -229,16 +321,63 @@ app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequ
     includePoints: z.boolean(),
     includeDomesticShipping: z.boolean(),
     defaultShippingAddressLabel: z.string().optional(),
+    defaultShippingProfileId: z.string().nullable().optional(),
     currency: z.string().default("JPY")
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
   const data = parsed.data;
-  const shop = await prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
-  if (!shop) return res.status(404).json({ error: "Shop not found" });
+  let shop;
+  if (data.shopId) {
+    shop = await prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
+    if (!shop) return res.status(404).json({ error: "Shop not found" });
+  } else if (req.userId) {
+    shop = await ensurePrimaryShop(req.userId);
+  }
+  if (!shop) return res.status(404).json({ error: "Unable to resolve shop" });
+  const targetShopId = shop.id;
+
+  const existingSetting = await prisma.autoShippingSetting.findUnique({ where: { shopId: targetShopId } });
+  const profileFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingProfileId");
+  const labelFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingAddressLabel");
+  let desiredProfileId = profileFieldProvided
+    ? data.defaultShippingProfileId ?? null
+    : existingSetting?.defaultShippingProfileId ?? null;
+  let targetShippingProfile: { id: string; amazonAddressLabel: string } | null = null;
+
+  if (desiredProfileId) {
+    const profile = await prisma.shippingProfile.findFirst({
+      where: { id: desiredProfileId, shopId: targetShopId, shop: { ownerId: req.userId } }
+    });
+    if (!profile) {
+      return res.status(404).json({ error: "Shipping profile not found for this shop" });
+    }
+    targetShippingProfile = { id: profile.id, amazonAddressLabel: profile.amazonAddressLabel };
+    await prisma.shippingProfile.updateMany({
+      where: { shopId: targetShopId, NOT: { id: profile.id } },
+      data: { isDefault: false }
+    });
+    await prisma.shippingProfile.update({
+      where: { id: profile.id },
+      data: { isDefault: true }
+    });
+  } else if (profileFieldProvided) {
+    await prisma.shippingProfile.updateMany({
+      where: { shopId: targetShopId },
+      data: { isDefault: false }
+    });
+  }
+
+  const sanitizedManualLabel = data.defaultShippingAddressLabel?.trim();
+  const defaultShippingAddressLabel =
+    targetShippingProfile?.amazonAddressLabel ??
+    (labelFieldProvided ? sanitizedManualLabel || null : (existingSetting?.defaultShippingAddressLabel ?? null));
+  const defaultShippingProfileId =
+    targetShippingProfile?.id ??
+    (profileFieldProvided ? null : (existingSetting?.defaultShippingProfileId ?? null));
 
   await prisma.autoShippingSetting.upsert({
-    where: { shopId: data.shopId },
+    where: { shopId: targetShopId },
     update: {
       isActive: data.isActive,
       isDryRun: data.isDryRun,
@@ -248,11 +387,12 @@ app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequ
       reviewBandPercent: data.reviewBandPercent ?? null,
       includePoints: data.includePoints,
       includeDomesticShipping: data.includeDomesticShipping,
-      defaultShippingAddressLabel: data.defaultShippingAddressLabel ?? null,
+      defaultShippingAddressLabel,
+      defaultShippingProfileId,
       currency: data.currency
     },
     create: {
-      shopId: data.shopId,
+      shopId: targetShopId,
       isActive: data.isActive,
       isDryRun: data.isDryRun,
       autoFulfillmentMode: data.autoFulfillmentMode,
@@ -261,19 +401,20 @@ app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequ
       reviewBandPercent: data.reviewBandPercent ?? null,
       includePoints: data.includePoints,
       includeDomesticShipping: data.includeDomesticShipping,
-      defaultShippingAddressLabel: data.defaultShippingAddressLabel ?? null,
+      defaultShippingAddressLabel,
+      defaultShippingProfileId,
       currency: data.currency
     }
   });
 
   if (data.isActive) {
-    await orderQueue.add("toggle-auto-shipping", { shopId: data.shopId, active: true });
+    await orderQueue.add("toggle-auto-shipping", { shopId: targetShopId, active: true });
   } else {
-    await orderQueue.add("toggle-auto-shipping", { shopId: data.shopId, active: false });
+    await orderQueue.add("toggle-auto-shipping", { shopId: targetShopId, active: false });
   }
 
-  await logAudit(req.userId, "update-settings", data);
-  res.json({ ok: true });
+  await logAudit(req.userId, "update-settings", { ...data, shopId: targetShopId });
+  res.json({ ok: true, shopId: targetShopId });
 }));
 
 app.post("/credentials/amazon", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
@@ -281,34 +422,57 @@ app.post("/credentials/amazon", authMiddleware, asyncHandler(async (req: Authent
     return res.status(500).json({ error: "Missing AES secret key" });
   }
   const schema = z.object({
-    shopId: z.string(),
+    shopId: z.string().optional(),
     email: z.string().email(),
     password: z.string().min(6)
   });
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
-  const shop = await prisma.shop.findFirst({ where: { id: parsed.data.shopId, ownerId: req.userId } });
-  if (!shop) return res.status(404).json({ error: "Shop not found" });
+
+  let targetShopId = parsed.data.shopId;
+  let shop = targetShopId
+    ? await prisma.shop.findFirst({ where: { id: targetShopId, ownerId: req.userId } })
+    : null;
+  if (!shop && req.userId) {
+    shop = await ensurePrimaryShop(req.userId);
+    targetShopId = shop.id;
+  }
+  if (!shop || !targetShopId) return res.status(404).json({ error: "Shop not found" });
+
   const { ciphertext, iv } = encryptSecret(parsed.data.password, AES_KEY);
   await prisma.amazonCredential.upsert({
-    where: { shopId: parsed.data.shopId },
+    where: { shopId: targetShopId },
     update: { username: parsed.data.email, passwordEncrypted: ciphertext, encryptionIv: iv, updatedByUserId: req.userId! },
     create: {
-      shopId: parsed.data.shopId,
+      shopId: targetShopId,
       username: parsed.data.email,
       passwordEncrypted: ciphertext,
       encryptionIv: iv,
       updatedByUserId: req.userId!
     }
   });
-  await logAudit(req.userId, "update-amazon-credentials", { email: parsed.data.email });
-  res.json({ ok: true });
+  await logAudit(req.userId, "update-amazon-credentials", { email: parsed.data.email, shopId: targetShopId });
+  res.json({ ok: true, shopId: targetShopId });
 }));
 
 app.get("/credentials/amazon", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
-  const shopIds = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true } });
-  const creds = await prisma.amazonCredential.findMany({ where: { shopId: { in: shopIds.map((s) => s.id) } } });
-  res.json(creds.map((c) => ({ shopId: c.shopId, email: c.username, hasPassword: Boolean(c.passwordEncrypted) })));
+  let shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true, name: true } });
+  if ((!shops || shops.length === 0) && req.userId) {
+    const fallback = await ensurePrimaryShop(req.userId);
+    shops = [{ id: fallback.id, name: fallback.name ?? "Primary Automation Shop" }];
+  }
+  if (!shops || shops.length === 0) return res.json([]);
+  const creds = await prisma.amazonCredential.findMany({ where: { shopId: { in: shops.map((s) => s.id) } } });
+  const payload = shops.map((shop) => {
+    const cred = creds.find((c) => c.shopId === shop.id);
+    return {
+      shopId: shop.id,
+      shopName: shop.name ?? shop.id,
+      email: cred?.username ?? "",
+      hasPassword: Boolean(cred?.passwordEncrypted)
+    };
+  });
+  res.json(payload);
 }));
 
 app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
@@ -496,6 +660,89 @@ app.post("/mappings/import", authMiddleware, asyncHandler(async (req: Authentica
   res.json({ ok: true });
 }));
 
+// Shipping profile management
+app.get("/shipping-profiles", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true } });
+  if (!shops || shops.length === 0) return res.json([]);
+  const profiles = await prisma.shippingProfile.findMany({ where: { shopId: { in: shops.map((s) => s.id) }, isActive: true }, orderBy: { label: "asc" } });
+  res.json(profiles);
+}));
+
+app.post("/shipping-profiles", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const parsed = shippingProfileInputSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
+  const data = parsed.data;
+  const shop = await prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
+  if (!shop) return res.status(404).json({ error: "Shop not found" });
+  const created = await prisma.shippingProfile.create({
+    data: {
+      shopId: shop.id,
+      label: data.label,
+      contactName: data.contactName,
+      phone: data.phone,
+      addressLine1: data.addressLine1,
+      addressLine2: data.addressLine2 ?? null,
+      city: data.city,
+      state: data.state ?? null,
+      postalCode: data.postalCode,
+      country: data.country ?? "JP",
+      instructions: data.instructions ?? null,
+      amazonAddressLabel: data.amazonAddressLabel,
+      isDefault: data.isDefault ?? false,
+      isActive: data.isActive ?? true
+    }
+  });
+
+  if (data.isDefault) {
+    await prisma.shippingProfile.updateMany({ where: { shopId: shop.id, NOT: { id: created.id } }, data: { isDefault: false } });
+    await prisma.autoShippingSetting.updateMany({ where: { shopId: shop.id }, data: { defaultShippingProfileId: created.id, defaultShippingAddressLabel: created.amazonAddressLabel } });
+  }
+
+  res.status(201).json(created);
+}));
+
+app.put("/shipping-profiles/:id", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const parsed = shippingProfileInputSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: "Invalid payload" });
+  const profile = await prisma.shippingProfile.findUnique({ where: { id: req.params.id } });
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  const shop = await prisma.shop.findFirst({ where: { id: profile.shopId, ownerId: req.userId } });
+  if (!shop) return res.status(404).json({ error: "Shop not found or not owned" });
+  const data = parsed.data;
+  const updated = await prisma.shippingProfile.update({ where: { id: profile.id }, data: {
+    label: data.label,
+    contactName: data.contactName,
+    phone: data.phone,
+    addressLine1: data.addressLine1,
+    addressLine2: data.addressLine2 ?? null,
+    city: data.city,
+    state: data.state ?? null,
+    postalCode: data.postalCode,
+    country: data.country ?? "JP",
+    instructions: data.instructions ?? null,
+    amazonAddressLabel: data.amazonAddressLabel,
+    isDefault: data.isDefault ?? false,
+    isActive: data.isActive ?? true
+  } });
+
+  if (data.isDefault) {
+    await prisma.shippingProfile.updateMany({ where: { shopId: profile.shopId, NOT: { id: profile.id } }, data: { isDefault: false } });
+    await prisma.autoShippingSetting.updateMany({ where: { shopId: profile.shopId }, data: { defaultShippingProfileId: profile.id, defaultShippingAddressLabel: data.amazonAddressLabel } });
+  }
+
+  res.json(updated);
+}));
+
+app.delete("/shipping-profiles/:id", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  const profile = await prisma.shippingProfile.findUnique({ where: { id: req.params.id } });
+  if (!profile) return res.status(404).json({ error: "Profile not found" });
+  const shop = await prisma.shop.findFirst({ where: { id: profile.shopId, ownerId: req.userId } });
+  if (!shop) return res.status(404).json({ error: "Shop not found or not owned" });
+  await prisma.shippingProfile.delete({ where: { id: profile.id } });
+  await prisma.autoShippingSetting.updateMany({ where: { shopId: profile.shopId, defaultShippingProfileId: profile.id }, data: { defaultShippingProfileId: null } });
+  res.json({ ok: true });
+}));
+
 app.get("/orders/errors", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
   const errors = await prisma.errorItem.findMany({
     where: { shop: { ownerId: req.userId } },
@@ -564,6 +811,113 @@ app.post("/orders/manual/:id", authMiddleware, asyncHandler(async (req: Authenti
     });
   }
   res.json({ ok: true });
+}));
+
+app.get("/manual-orders", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthorized" });
+  const query = manualOrderListSchema.safeParse(req.query);
+  if (!query.success) {
+    return res.status(400).json({ error: "Invalid filters" });
+  }
+  const take = query.data.limit ?? 25;
+  const where: Prisma.ManualAmazonOrderWhereInput = {
+    ownerId: req.userId!,
+    ...(query.data.status ? { status: query.data.status } : {}),
+    ...(query.data.shopId ? { shopId: query.data.shopId } : {})
+  };
+  const orders = await prisma.manualAmazonOrder.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: { shop: { select: { id: true, name: true } } },
+    take: take + 1,
+    cursor: query.data.cursor ? { id: query.data.cursor } : undefined,
+    skip: query.data.cursor ? 1 : undefined
+  });
+  const hasNext = orders.length > take;
+  const items = hasNext ? orders.slice(0, take) : orders;
+  const nextCursor = hasNext ? orders[orders.length - 1].id : null;
+  res.json({ orders: items, nextCursor });
+}));
+
+app.post("/manual-orders", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthorized" });
+  const parsed = manualOrderInputSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  let targetShopId = parsed.data.shopId;
+  let shop = targetShopId
+    ? await prisma.shop.findFirst({ where: { id: targetShopId, ownerId: req.userId } })
+    : null;
+  if (!shop && req.userId) {
+    shop = await ensurePrimaryShop(req.userId!, "Manual Amazon Orders");
+    targetShopId = shop.id;
+  }
+  if (!shop || !targetShopId) {
+    return res.status(404).json({ error: "Shop not found" });
+  }
+  const asin = parsed.data.asin?.toUpperCase() ?? extractAsinFromUrl(parsed.data.productUrl);
+  const purchasePriceDecimal = parsed.data.purchasePrice !== undefined
+    ? new Prisma.Decimal(parsed.data.purchasePrice.toString())
+    : null;
+  const created = await prisma.manualAmazonOrder.create({
+    data: {
+      shopId: targetShopId,
+      ownerId: req.userId!,
+      productUrl: parsed.data.productUrl,
+      asin,
+      quantity: parsed.data.quantity,
+      notes: parsed.data.notes?.trim() || undefined,
+      buyerName: parsed.data.buyerName,
+      phone: parsed.data.phone,
+      addressLine1: parsed.data.addressLine1,
+      addressLine2: parsed.data.addressLine2?.trim() || undefined,
+      city: parsed.data.city,
+      state: parsed.data.state?.trim() || undefined,
+      postalCode: parsed.data.postalCode,
+      country: (parsed.data.country ?? "JP").toUpperCase(),
+      shippingAddressLabel: parsed.data.shippingAddressLabel?.trim() || parsed.data.buyerName,
+      shippingProfileId: parsed.data.shippingProfileId || undefined,
+      purchasePrice: purchasePriceDecimal
+    },
+    include: { shop: { select: { id: true, name: true } } }
+  });
+  await logAudit(req.userId, "manual-order-create", { manualOrderId: created.id, shopId: targetShopId, asin });
+  await orderQueue.add("process-manual-order", { manualOrderId: created.id, shopId: targetShopId }, {
+    removeOnComplete: 500,
+    removeOnFail: 500
+  });
+  res.status(201).json(created);
+}));
+
+app.post("/manual-orders/:id/cancel", authMiddleware, asyncHandler(async (req: AuthenticatedRequest, res) => {
+  if (!req.userId) return res.status(401).json({ error: "Unauthorized" });
+  const parsed = manualOrderCancelSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: "Invalid payload" });
+  }
+  const order = await prisma.manualAmazonOrder.findUnique({
+    where: { id: req.params.id },
+    include: { shop: { select: { id: true, name: true } } }
+  });
+  if (!order || order.ownerId !== req.userId) {
+    return res.status(404).json({ error: "Manual order not found" });
+  }
+  if (![ManualOrderStatus.PENDING, ManualOrderStatus.PROCESSING].includes(order.status)) {
+    return res.status(400).json({ error: "Order can no longer be cancelled" });
+  }
+  const reason = parsed.data.reason?.trim() || "Cancelled by user";
+  const updated = await prisma.manualAmazonOrder.update({
+    where: { id: order.id },
+    data: {
+      status: ManualOrderStatus.CANCELLED,
+      failureCode: "USER_CANCELLED",
+      failureReason: reason
+    },
+    include: { shop: { select: { id: true, name: true } } }
+  });
+  await logAudit(req.userId, "manual-order-cancel", { manualOrderId: order.id });
+  res.json(updated);
 }));
 
 app.post("/auth/signup", asyncHandler(async (req, res) => {
