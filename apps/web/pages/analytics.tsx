@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { serverSideTranslations } from "next-i18next/serverSideTranslations";
 import { useTranslation } from "next-i18next";
@@ -71,56 +71,6 @@ type ProfitTrend = {
   successfulOrders: number;
 };
 
-const FALLBACK_DASHBOARD: DashboardData = {
-  week: {
-    _sum: {
-      totalOrders: 72,
-      successfulOrders: 65,
-      failedOrders: 7,
-      totalRevenue: 985000,
-      totalProfit: 286000,
-      totalShippingCost: 82000
-    },
-    _avg: {
-      errorRate: 0.07,
-      conversionRate: 0.92
-    }
-  },
-  month: {
-    _sum: {
-      totalOrders: 288,
-      totalRevenue: 4125000,
-      totalProfit: 1214000
-    }
-  },
-  alerts: {
-    lowStock: 3,
-    errors: 4,
-    returns: 2
-  }
-};
-
-const buildFallbackTrends = (days: number): ProfitTrend[] => {
-  return Array.from({ length: days }, (_, idx) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (days - idx - 1));
-    const baseRevenue = 40000 + idx * 1200;
-    const variance = Math.sin(idx / 3) * 6000;
-    const totalRevenue = baseRevenue + variance;
-    const totalProfit = totalRevenue * 0.28;
-    const orders = 24 + (idx % 5) * 3;
-    const successfulOrders = Math.max(orders - 2, 1);
-    return {
-      date: date.toISOString(),
-      totalRevenue,
-      totalProfit,
-      avgProfit: totalProfit / orders,
-      totalOrders: orders,
-      successfulOrders
-    };
-  });
-};
-
 const PERIOD_DAY_MAP: Record<'7' | '30' | '90', number> = {
   '7': 7,
   '30': 30,
@@ -131,7 +81,6 @@ export default function Analytics() {
   const { t, i18n } = useTranslation("common");
   const [selectedPeriod, setSelectedPeriod] = useState<'7' | '30' | '90'>('30');
   const [showTour, setShowTour] = useState(false);
-  const [useFallbackData, setUseFallbackData] = useState(false);
   const locale = i18n?.language;
   
   const { data: dashboard, error: dashError } = useSWR<DashboardData>("/api/analytics/dashboard", fetcher);
@@ -140,30 +89,15 @@ export default function Analytics() {
     fetcher
   );
 
-  useEffect(() => {
-    if (dashError || trendError) {
-      setUseFallbackData(true);
-    }
-  }, [dashError, trendError]);
-
-  useEffect(() => {
-    if (!dashError && dashboard && !trendError && profitTrends) {
-      setUseFallbackData(false);
-    }
-  }, [dashboard, dashError, profitTrends, trendError]);
-
-  const fallbackTrends = useMemo(
-    () => buildFallbackTrends(PERIOD_DAY_MAP[selectedPeriod]),
-    [selectedPeriod]
-  );
-  const effectiveDashboard = useFallbackData ? FALLBACK_DASHBOARD : dashboard;
+  const effectiveDashboard = dashboard;
   const hasTrendData = Array.isArray(profitTrends) && profitTrends.length > 0;
-  const trendsArray = useFallbackData ? fallbackTrends : hasTrendData ? (profitTrends as ProfitTrend[]) : [];
+  const trendsArray = hasTrendData ? (profitTrends as ProfitTrend[]) : [];
   const dateFormatter = useMemo(
     () => new Intl.DateTimeFormat(locale || undefined, { month: "short", day: "numeric" }),
     [locale]
   );
-  const isLoading = !useFallbackData && !effectiveDashboard && !dashError;
+  const analyticsError = dashError || trendError;
+  const isLoading = !effectiveDashboard && !analyticsError;
 
   // Calculate metrics
   const weekRevenue = effectiveDashboard?.week?._sum?.totalRevenue || 0;
@@ -229,8 +163,8 @@ export default function Analytics() {
     });
   }
   const heroBadge = (
-    <Badge variant={useFallbackData ? "warning" : "info"}>
-      {useFallbackData ? t("analyticsSampleDataTitle") : t("liveMetrics") || "Live metrics"}
+    <Badge variant={effectiveDashboard ? "success" : "warning"}>
+      {effectiveDashboard ? t("liveMetrics") || "Live metrics" : t("noDataAvailable") || "Awaiting data"}
     </Badge>
   );
 
@@ -266,9 +200,9 @@ export default function Analytics() {
 
   const heroFooter = (
     <span style={{ color: "var(--color-text-muted)", fontSize: 14 }}>
-      {useFallbackData
-        ? t("analyticsSampleDataDesc")
-        : t("analyticsLiveDataHint") || "Data refreshes every 15 minutes from the analytics API."}
+      {effectiveDashboard
+        ? t("analyticsLiveDataHint") || "Data refreshes every 15 minutes from the analytics API."
+        : t("analyticsNoDataYet") || "Connect a shop and process orders to unlock analytics."}
     </span>
   );
 
@@ -291,8 +225,8 @@ export default function Analytics() {
         <Button type="button" variant="ghost" className="full-width-mobile" onClick={() => window.location.reload()}>
           🔄 {t("refreshData") || "Refresh"}
         </Button>
-        <Badge variant={useFallbackData ? "warning" : "success"}>
-          {useFallbackData ? t("sampleData") || "Sample data" : t("liveData") || "Live data"}
+        <Badge variant={effectiveDashboard ? "success" : "warning"}>
+          {effectiveDashboard ? t("liveData") || "Live data" : t("noDataAvailable") || "No data"}
         </Badge>
       </div>
     </div>
@@ -390,17 +324,11 @@ export default function Analytics() {
           </Alert>
         )}
 
-        {useFallbackData && (
-          <Alert variant="info" title={t("analyticsSampleDataTitle")}>
-            {t("analyticsSampleDataDesc")}
-          </Alert>
-        )}
-
         {isLoading ? (
           <LoadingSpinner size="lg" text={t("loadingAnalyticsData")} />
-        ) : !useFallbackData && (dashError || trendError) ? (
-          <Alert variant="error" title={t("failedToLoadData")}>
-            {t("unableToFetchAnalytics")}
+        ) : analyticsError ? (
+          <Alert variant="error" title={t("failedToLoadData") || "Failed to load data"}>
+            {t("unableToFetchAnalytics") || "Unable to fetch analytics right now. Please retry in a moment."}
           </Alert>
         ) : (
           <div>

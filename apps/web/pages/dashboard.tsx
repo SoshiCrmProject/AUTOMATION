@@ -91,6 +91,12 @@ export default function Dashboard() {
   const { data: orders, error: ordersError } = useSWR<Order[]>("/orders/recent", fetcher);
   const { data: queue } = useSWR<QueueHealth>("/ops/queue", fetcher, { shouldRetryOnError: false });
   const { data: health } = useSWR("/health", fetcher, { shouldRetryOnError: false });
+  const periodDayMap: Record<'7d' | '30d' | '90d', number> = { '7d': 7, '30d': 30, '90d': 90 };
+  const { data: trendSeries, error: trendError } = useSWR(
+    `/api/analytics/profit-trends?days=${periodDayMap[selectedPeriod]}`,
+    fetcher,
+    { shouldRetryOnError: false }
+  );
 
   const isLoading = !orders && !ordersError;
 
@@ -105,16 +111,15 @@ export default function Dashboard() {
   const successRateValue = ordersArray.length > 0 ? (processedCount / ordersArray.length) * 100 : 0;
   const successRateDisplay = formatNumber(successRateValue, localeForDisplay, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
-  // Generate trend data (mock data for now - replace with real API)
-  const generateTrendData = () => {
-    const days = selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 90;
-    return Array.from({ length: days }, (_, i) => ({
-      label: `Day ${i + 1}`,
-      value: Math.floor(Math.random() * 50) + 10
+  const trendData = useMemo(() => {
+    if (!Array.isArray(trendSeries)) return [];
+    const formatter = new Intl.DateTimeFormat(localeForDisplay, { month: "short", day: "numeric" });
+    return trendSeries.map((point: any) => ({
+      label: formatter.format(new Date(point.date)),
+      value: Number(point.totalOrders ?? 0)
     }));
-  };
-
-  const trendData = useMemo(() => generateTrendData(), [selectedPeriod]);
+  }, [trendSeries, localeForDisplay]);
+  const hasTrendData = trendData.length > 0;
 
   // Bar chart data
   const statusChartData = [
@@ -412,7 +417,17 @@ export default function Dashboard() {
               </Card>
               <Card>
                 <CardHeader title={t("ordersTrend") || "Orders trend"} icon="📈" />
-                <TrendLine data={trendData} height="250px" showDots />
+                {trendError ? (
+                  <Alert variant="error" title={t("failedToLoadData") || "Failed to load data"}>
+                    {t("unableToFetchAnalytics") || "We couldn't load the trend data. Please retry in a moment."}
+                  </Alert>
+                ) : hasTrendData ? (
+                  <TrendLine data={trendData} height="250px" showDots />
+                ) : (
+                  <Alert variant="info" title={t("noDataAvailable") || "No data yet"}>
+                    {t("connectShopToViewTrends") || "Connect a shop and process orders to visualize trends."}
+                  </Alert>
+                )}
               </Card>
             </div>
 

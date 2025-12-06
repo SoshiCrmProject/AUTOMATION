@@ -208,12 +208,22 @@ export default function MappingsPage() {
   );
 
   const handleApplyTemplate = () => {
-    const template = [
-      "shop-123,123456789,https://www.amazon.co.jp/dp/B0ABC12345,First SKU",
-      "shop-456,987654321,https://www.amazon.co.jp/dp/B0XYZ67890,Backup SKU"
-    ].join("\n");
-    setCsvText(template);
-    pushToast(t("csvTemplateApplied") || "Sample CSV template applied", "success");
+    if (!mappings.length) {
+      pushToast(t("csvTemplateUnavailable") || "Add a mapping to export it", "warning");
+      return;
+    }
+
+    const rows = mappings.slice(0, Math.min(10, mappings.length)).map((mapping) => {
+      const safeNotes = (mapping.notes || "")
+        .replace(/\r?\n/g, " ")
+        .replace(/,/g, ";")
+        .trim();
+      return [mapping.shopId, mapping.shopeeItemId, mapping.amazonProductUrl, safeNotes].join(",");
+    });
+
+    const payload = ["shopId,shopeeItemId,amazonProductUrl,notes", ...rows].join("\n");
+    setCsvText(payload);
+    pushToast(t("csvTemplateApplied") || "Existing mappings copied", "success");
   };
 
   const toolbar = (
@@ -261,7 +271,7 @@ export default function MappingsPage() {
         </ul>
         <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
           <Button size="sm" onClick={handleApplyTemplate}>
-            {t("applyTemplate") || "Apply template"}
+            {t("copyExistingMappings") || "Copy existing mappings"}
           </Button>
           <Button size="sm" variant="ghost" onClick={() => setCsvText("")}>
             {t("clearForm") || "Clear"}

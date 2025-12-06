@@ -25,6 +25,7 @@ module.exports = {
       testMatch: ['<rootDir>/apps/api/**/*.test.ts', '<rootDir>/packages/**/*.test.ts'],
       testEnvironment: 'node',
       preset: 'ts-jest',
+      setupFilesAfterEnv: ['<rootDir>/apps/api/__tests__/setupIntegration.ts'],
       moduleNameMapper: {
         '^@shopee-amazon/shared$': '<rootDir>/packages/shared/src',
       },

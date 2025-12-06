@@ -70,7 +70,9 @@ export default function SettingsPage() {
   const [amazonEmail, setAmazonEmail] = useState("");
   const [amazonPassword, setAmazonPassword] = useState("");
   const [amazonShippingLabel, setAmazonShippingLabel] = useState("Shopee Warehouse");
+  const [defaultShippingProfileId, setDefaultShippingProfileId] = useState<string | null>(null);
   const [healthCheckLoading, setHealthCheckLoading] = useState(false);
+  const [webhookLoading, setWebhookLoading] = useState(false);
   
   // Alert webhook
   const [alertWebhookUrl, setAlertWebhookUrl] = useState("");
@@ -88,9 +90,23 @@ export default function SettingsPage() {
     }
   );
 
-  const { data: shops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
-  const { data: shopeeCredentials } = useSWR("/credentials/shopee", fetcher, { shouldRetryOnError: false });
-  const { data: amazonCredentials } = useSWR("/credentials/amazon", fetcher, { shouldRetryOnError: false });
+  const { data: shops, mutate: refreshShops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
+  useEffect(() => {
+    if (!Array.isArray(notificationChannels) || alertWebhookUrl) return;
+    const webhookChannel = notificationChannels.find((channel: any) => channel.type === "WEBHOOK");
+    if (webhookChannel?.config?.webhookUrl) {
+      setAlertWebhookUrl(webhookChannel.config.webhookUrl);
+    }
+  }, [notificationChannels, alertWebhookUrl]);
+
+  const { data: shopeeCredentials, mutate: refreshShopeeCredentials } = useSWR("/credentials/shopee", fetcher, { shouldRetryOnError: false });
+  const { data: amazonCredentials, mutate: refreshAmazonCredentials } = useSWR("/credentials/amazon", fetcher, { shouldRetryOnError: false });
+  const { data: notificationChannels, mutate: refreshNotificationChannels } = useSWR(
+    () => (shopId ? `/api/notifications/channels/${shopId}` : null),
+    fetcher,
+    { shouldRetryOnError: false }
+  );
+  const { data: shippingProfiles } = useSWR(() => (shopId ? `/shipping-profiles` : null), fetcher, { shouldRetryOnError: false });
   const { data: credentialHealth, error: credentialHealthError, mutate: refreshCredentialHealth } = useSWR<CredentialHealth[]>(
     "/ops/credential-health",
     fetcher,
@@ -110,6 +126,7 @@ export default function SettingsPage() {
       // Set shopId from first shop in settings
       if (settings.shopIds && settings.shopIds.length > 0) {
         setShopId(settings.shopIds[0]);
+        setDefaultShippingProfileId((settings as any).defaultShippingProfileId ?? null);
       }
     }
   }, [settings]);
@@ -132,19 +149,25 @@ export default function SettingsPage() {
     if (amazonCredentials && amazonCredentials.length > 0) {
       const cred = amazonCredentials[0];
       setAmazonEmail(cred.email || "");
-      setAmazonShippingLabel("Shopee Warehouse");
+      if (!shopId && cred.shopId) {
+        setShopId(cred.shopId.toString());
+      }
     }
-  }, [amazonCredentials]);
+  }, [amazonCredentials, shopId]);
+
+  useEffect(() => {
+    if (notificationChannels && notificationChannels.length > 0) {
+      const webhookChannel = notificationChannels.find((channel: any) => channel.type === "WEBHOOK");
+      if (webhookChannel?.config?.webhookUrl) {
+        setAlertWebhookUrl(webhookChannel.config.webhookUrl);
+      }
+    }
+  }, [notificationChannels]);
 
   const handleSaveSettings = async () => {
-    if (!shopId) {
-      pushToast("No shop selected. Please refresh the page.", "error");
-      return;
-    }
     setLoading(true);
     try {
-      await api.post("/settings", {
-        shopId,
+      const payload: Record<string, any> = {
         isActive,
         isDryRun,
         autoFulfillmentMode,
@@ -153,9 +176,22 @@ export default function SettingsPage() {
         reviewBandPercent,
         includePoints: includeAmazonPoints,
         includeDomesticShipping,
-        defaultShippingAddressLabel: amazonShippingLabel || "Shopee Warehouse",
         currency: "JPY"
-      });
+      };
+      // If a shipping profile is selected, prefer it. Otherwise send the manual label.
+      if (defaultShippingProfileId) {
+        payload.defaultShippingProfileId = defaultShippingProfileId;
+      } else {
+        payload.defaultShippingAddressLabel = amazonShippingLabel || "Shopee Warehouse";
+      }
+      if (shopId) {
+        payload.shopId = shopId;
+      }
+      const response = await api.post("/settings", payload);
+      if (!shopId && response?.data?.shopId) {
+        setShopId(response.data.shopId);
+        refreshShops();
+      }
       pushToast("Settings saved successfully", "success");
       refreshSettings();
     } catch (error: any) {
@@ -166,10 +202,6 @@ export default function SettingsPage() {
   };
 
   const handleSaveShopeeCredentials = async () => {
-    if (!shopId) {
-      pushToast("No shop selected", "error");
-      return;
-    }
     if (!shopeePartnerId || !shopeePartnerKey || !shopeeShopId) {
       pushToast("Please fill in all Shopee credentials", "error");
       return;
@@ -181,11 +213,15 @@ export default function SettingsPage() {
         partnerKey: shopeePartnerKey,
         accessToken: "",
         baseUrl: "https://partner.shopeemobile.com",
-        shopId: shopId,
-        shopName: shopeeShopId,
-        shopeeRegion: "TH"
+        shopId: shopeeShopId,
+        shopName: selectedShop?.name || shopeeShopId,
+        shopeeRegion: selectedShop?.shopeeRegion || "SG"
       });
       pushToast("Shopee credentials saved successfully", "success");
+      refreshShops();
+      refreshSettings();
+      refreshShopeeCredentials();
+      refreshCredentialHealth();
     } catch (error: any) {
       pushToast(error.response?.data?.error || "Failed to save Shopee credentials", "error");
     } finally {
@@ -194,23 +230,30 @@ export default function SettingsPage() {
   };
 
   const handleSaveAmazonCredentials = async () => {
-    if (!shopId) {
-      pushToast("No shop selected", "error");
-      return;
-    }
     if (!amazonEmail || !amazonPassword) {
       pushToast("Please fill in email and password", "error");
       return;
     }
     setLoading(true);
     try {
-      await api.post("/credentials/amazon", {
-        shopId,
+      const payload: Record<string, any> = {
         email: amazonEmail,
         password: amazonPassword
-      });
+      };
+      if (shopId) {
+        payload.shopId = shopId;
+      }
+      const response = await api.post("/credentials/amazon", payload);
+      const resolvedShopId = response?.data?.shopId ?? shopId;
+      if (!shopId && resolvedShopId) {
+        setShopId(resolvedShopId.toString());
+        refreshShops();
+        refreshSettings();
+      }
       pushToast("Amazon credentials saved successfully", "success");
       setAmazonPassword(""); // Clear password after save
+      refreshAmazonCredentials();
+      refreshCredentialHealth();
     } catch (error: any) {
       pushToast(error.response?.data?.error || "Failed to save Amazon credentials", "error");
     } finally {
@@ -218,22 +261,66 @@ export default function SettingsPage() {
     }
   };
 
-  const handleTestWebhook = async () => {
-    if (!alertWebhookUrl.trim()) {
-      pushToast("Please enter a webhook URL", "error");
-      return;
+  const upsertWebhookChannel = async () => {
+    if (!shopId) {
+      throw new Error(t("selectShopToLoad") || "Select a shop first");
     }
-    
-    setLoading(true);
-    try {
-      await api.post(alertWebhookUrl, {
-        text: "🧪 Test notification from Shopee→Amazon Automation"
+    if (!alertWebhookUrl.trim()) {
+      throw new Error(t("webhookPlaceholder") || "Webhook URL required");
+    }
+    const trimmedUrl = alertWebhookUrl.trim();
+    setAlertWebhookUrl(trimmedUrl);
+    const existingChannel = Array.isArray(notificationChannels)
+      ? notificationChannels.find((channel: any) => channel.type === "WEBHOOK")
+      : null;
+    if (existingChannel) {
+      await api.put(`/api/notifications/channels/${existingChannel.id}`, {
+        isActive: true,
+        config: { ...(existingChannel.config || {}), webhookUrl: trimmedUrl }
       });
-      pushToast("Webhook test sent successfully", "success");
+      await refreshNotificationChannels();
+      return existingChannel.id;
+    }
+    const created = await api.post("/api/notifications/channels", {
+      shopId,
+      type: "WEBHOOK",
+      isActive: true,
+      config: { webhookUrl: trimmedUrl }
+    });
+    await refreshNotificationChannels();
+    return created.data.id;
+  };
+
+  const handleSaveWebhook = async () => {
+    try {
+      setWebhookLoading(true);
+      await upsertWebhookChannel();
+      pushToast(t("webhookSaved") || "Webhook saved", "success");
     } catch (error: any) {
-      pushToast("Webhook test failed", "error");
+      pushToast(error?.message || t("webhookSaveFailed") || "Failed to save webhook", "error");
     } finally {
-      setLoading(false);
+      setWebhookLoading(false);
+    }
+  };
+
+  const handleTestWebhook = async () => {
+    try {
+      setWebhookLoading(true);
+      await upsertWebhookChannel();
+      await api.post("/api/notifications/send", {
+        shopId,
+        trigger: "WEBHOOK_TEST",
+        priority: "LOW",
+        subject: "Webhook Connectivity Test",
+        message: "🧪 Test notification from Shopee→Amazon Automation",
+        channelTypes: ["WEBHOOK"],
+        metadata: { source: "settings" }
+      });
+      pushToast(t("webhookTestSent") || "Webhook test sent successfully", "success");
+    } catch (error: any) {
+      pushToast(error?.response?.data?.error || error?.message || t("webhookTestFailed") || "Webhook test failed", "error");
+    } finally {
+      setWebhookLoading(false);
     }
   };
 
@@ -294,6 +381,14 @@ export default function SettingsPage() {
           }))
         : [],
     [shops, t]
+  );
+
+  const selectedShop = useMemo(
+    () =>
+      Array.isArray(shops)
+        ? shops.find((shop: any) => shop?.id?.toString() === shopId)
+        : null,
+    [shops, shopId]
   );
 
   const heroHighlights = useMemo(
@@ -455,13 +550,29 @@ export default function SettingsPage() {
         icon="💡"
       />
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <Button type="button" variant="ghost" onClick={replayTour}>
-          🎥 {t("replayTour") || "Replay tour"}
-        </Button>
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={() => {
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-end" }}>
+          <div style={{ flex: "1 1 260px" }}>
+            <label className="label">Default shipping profile</label>
+            <Select
+              value={defaultShippingProfileId || ""}
+              onChange={(e) => setDefaultShippingProfileId(e.target.value || null)}
+              options={
+                Array.isArray(shippingProfiles) && shippingProfiles.length
+                  ? shippingProfiles.map((p: any) => ({ value: p.id, label: `${p.label} — ${p.addressLine1}` }))
+                  : [{ value: "", label: t("noProfiles") || "No profiles" }]
+              }
+            />
+          </div>
+          <div style={{ flex: "1 1 260px" }}>
+            <Input
+              label="Shipping Label 🏷️"
+              value={amazonShippingLabel}
+              onChange={(e) => setAmazonShippingLabel(e.target.value)}
+              placeholder={t("warehousePlaceholder")}
+              hint={t("hintDefaultShippingLabel")}
+            />
+          </div>
+        </div>
             if (typeof window !== "undefined") {
               window.open("/SHOPEE_CREDENTIALS_GUIDE.md", "_blank");
             }
@@ -767,6 +878,23 @@ export default function SettingsPage() {
   const notificationsTab = (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
       <Alert variant="info">{t("webhookInstructions") || "Configure Slack or Discord webhook URL for alerts."}</Alert>
+      {Array.isArray(notificationChannels) && notificationChannels.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {notificationChannels.map((channel: any) => (
+            <div key={channel.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", border: "1px solid var(--color-border)", borderRadius: "var(--radius-md)" }}>
+              <div>
+                <strong>{channel.type}</strong>
+                <p style={{ margin: 0, fontSize: 12, color: "var(--color-text-muted)" }}>
+                  {channel.config?.webhookUrl || t("webhookPlaceholder") || "Webhook URL"}
+                </p>
+              </div>
+              <Badge variant={channel.isActive ? "success" : "warning"}>{channel.isActive ? t("active") || "Active" : t("inactive") || "Inactive"}</Badge>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Alert variant="warning">{t("webhookEmptyState") || "No notification channels configured yet."}</Alert>
+      )}
       <Input
         label="Webhook URL"
         value={alertWebhookUrl}
@@ -775,10 +903,10 @@ export default function SettingsPage() {
         hint={t("hintWebhookURL")}
       />
       <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-        <Button onClick={handleTestWebhook} variant="ghost" fullWidth disabled={loading}>
+        <Button onClick={handleTestWebhook} variant="ghost" fullWidth disabled={webhookLoading}>
           🧪 {t("testWebhook") || "Test webhook"}
         </Button>
-        <Button variant="primary" fullWidth disabled={loading}>
+        <Button onClick={handleSaveWebhook} variant="primary" fullWidth disabled={webhookLoading}>
           💾 {t("saveWebhook") || "Save webhook"}
         </Button>
       </div>
