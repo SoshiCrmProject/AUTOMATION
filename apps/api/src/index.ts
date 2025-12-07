@@ -97,6 +97,30 @@ const HEALTH_TOKEN = process.env.HEALTH_TOKEN;
 const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL;
 const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD;
 
+// Health endpoint for monitoring (DB + Redis basic checks)
+app.get("/health", asyncHandler(async (_req: Request, res: Response) => {
+  try {
+    // simple DB check
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err: any) {
+    console.error("Health check DB error", err);
+    return res.status(500).json({ ok: false, error: "db_error", details: err?.message });
+  }
+
+  try {
+    // simple Redis check via queue client ping
+    const client = orderQueue.client as any;
+    if (client && typeof client.ping === "function") {
+      await client.ping();
+    }
+  } catch (err: any) {
+    console.error("Health check Redis error", err);
+    return res.status(500).json({ ok: false, error: "redis_error", details: err?.message });
+  }
+
+  return res.json({ ok: true });
+}));
+
 function asyncHandler(
   fn: (req: AuthenticatedRequest, res: Response, next: NextFunction) => Promise<any>
 ) {
