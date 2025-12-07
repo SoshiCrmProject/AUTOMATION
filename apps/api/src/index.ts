@@ -97,6 +97,12 @@ const HEALTH_TOKEN = process.env.HEALTH_TOKEN;
 const SUPERADMIN_EMAIL = process.env.SUPERADMIN_EMAIL;
 const SUPERADMIN_PASSWORD = process.env.SUPERADMIN_PASSWORD;
 
+// Log presence of critical env vars (do not log secrets)
+console.log("ENV CHECK: DATABASE_URL=" + (process.env.DATABASE_URL ? "SET" : "MISSING"));
+console.log("ENV CHECK: REDIS_URL=" + (process.env.REDIS_URL ? "SET" : "MISSING"));
+console.log("ENV CHECK: AES_SECRET_KEY=" + (process.env.AES_SECRET_KEY ? "SET" : "MISSING"));
+console.log("ENV CHECK: JWT_SECRET=" + (process.env.JWT_SECRET ? "SET" : "MISSING"));
+
 // Health endpoint for monitoring (DB + Redis basic checks)
 app.get("/health", asyncHandler(async (_req: Request, res: Response) => {
   try {
@@ -1240,6 +1246,10 @@ app.use((_req, res) => {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err);
+  if (process.env.NODE_ENV !== 'production') {
+    // In non-production, return the error message for debugging
+    return res.status(500).json({ error: "Internal Server Error", message: err?.message, stack: err?.stack });
+  }
   res.status(500).json({ error: "Internal Server Error" });
 });
 
