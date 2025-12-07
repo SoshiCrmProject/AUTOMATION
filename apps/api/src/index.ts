@@ -60,9 +60,11 @@ async function ensurePrimaryShop(userId: string, fallbackName?: string) {
     orderBy: { createdAt: "asc" }
   });
   if (existing) {
-    return existing;
+    // include setting to make the returned shape compatible with callers that request `include: { setting: true }`
+    return prisma.shop.findUnique({ where: { id: existing.id }, include: { setting: true } });
   }
   const placeholderId = `manual-${userId.slice(0, 8)}-${Date.now().toString(36)}`;
+  // create the shop and return it with the `setting` relation included (will be null initially)
   return prisma.shop.create({
     data: {
       ownerId: userId,
@@ -70,7 +72,8 @@ async function ensurePrimaryShop(userId: string, fallbackName?: string) {
       shopeeShopId: placeholderId,
       shopeeRegion: "AMAZON",
       isActive: true
-    }
+    },
+    include: { setting: true }
   });
 }
 const redisUrl = new URL(process.env.REDIS_URL ?? "redis://localhost:6379");
@@ -263,7 +266,7 @@ app.get("/shops", authMiddleware, asyncHandler(async (req: AuthenticatedRequest,
   });
   if ((!shops || shops.length === 0) && req.userId) {
     const fallback = await ensurePrimaryShop(req.userId);
-    shops = [fallback];
+    shops = [fallback! as any];
   }
   res.json(shops);
 }));
@@ -276,7 +279,7 @@ app.get("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedReque
   });
   if (!shop && req.userId) {
     shop = await ensurePrimaryShop(req.userId);
-    shop = await prisma.shop.findFirst({ where: { id: shop.id }, include: { setting: true } }) ?? shop;
+    shop = await prisma.shop.findFirst({ where: { id: shop!.id }, include: { setting: true } }) ?? shop;
   }
   if (!shop || !shop.setting) {
     return res.json({
@@ -340,7 +343,7 @@ app.post("/settings", authMiddleware, asyncHandler(async (req: AuthenticatedRequ
   const existingSetting = await prisma.autoShippingSetting.findUnique({ where: { shopId: targetShopId } });
   const profileFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingProfileId");
   const labelFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingAddressLabel");
-  let desiredProfileId = profileFieldProvided
+  const desiredProfileId = profileFieldProvided
     ? data.defaultShippingProfileId ?? null
     : existingSetting?.defaultShippingProfileId ?? null;
   let targetShippingProfile: { id: string; amazonAddressLabel: string } | null = null;
@@ -435,7 +438,7 @@ app.post("/credentials/amazon", authMiddleware, asyncHandler(async (req: Authent
     : null;
   if (!shop && req.userId) {
     shop = await ensurePrimaryShop(req.userId);
-    targetShopId = shop.id;
+    targetShopId = shop!.id;
   }
   if (!shop || !targetShopId) return res.status(404).json({ error: "Shop not found" });
 
@@ -459,7 +462,7 @@ app.get("/credentials/amazon", authMiddleware, asyncHandler(async (req: Authenti
   let shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true, name: true } });
   if ((!shops || shops.length === 0) && req.userId) {
     const fallback = await ensurePrimaryShop(req.userId);
-    shops = [{ id: fallback.id, name: fallback.name ?? "Primary Automation Shop" }];
+    shops = [{ id: fallback!.id, name: fallback!.name ?? "Primary Automation Shop" }];
   }
   if (!shops || shops.length === 0) return res.json([]);
   const creds = await prisma.amazonCredential.findMany({ where: { shopId: { in: shops.map((s) => s.id) } } });
@@ -851,7 +854,7 @@ app.post("/manual-orders", authMiddleware, asyncHandler(async (req: Authenticate
     : null;
   if (!shop && req.userId) {
     shop = await ensurePrimaryShop(req.userId!, "Manual Amazon Orders");
-    targetShopId = shop.id;
+    targetShopId = shop!.id;
   }
   if (!shop || !targetShopId) {
     return res.status(404).json({ error: "Shop not found" });
@@ -903,7 +906,7 @@ app.post("/manual-orders/:id/cancel", authMiddleware, asyncHandler(async (req: A
   if (!order || order.ownerId !== req.userId) {
     return res.status(404).json({ error: "Manual order not found" });
   }
-  if (![ManualOrderStatus.PENDING, ManualOrderStatus.PROCESSING].includes(order.status)) {
+  if (order.status !== ManualOrderStatus.PENDING && order.status !== ManualOrderStatus.PROCESSING) {
     return res.status(400).json({ error: "Order can no longer be cancelled" });
   }
   const reason = parsed.data.reason?.trim() || "Cancelled by user";

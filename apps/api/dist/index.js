@@ -3,6 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.prisma = void 0;
 const express_1 = __importDefault(require("express"));
 const cors_1 = __importDefault(require("cors"));
 const helmet_1 = __importDefault(require("helmet"));
@@ -46,7 +47,29 @@ app.use((0, express_rate_limit_1.default)({
     standardHeaders: true,
     legacyHeaders: false
 }));
-const prisma = new client_1.PrismaClient();
+exports.prisma = new client_1.PrismaClient();
+async function ensurePrimaryShop(userId, fallbackName) {
+    const existing = await exports.prisma.shop.findFirst({
+        where: { ownerId: userId },
+        orderBy: { createdAt: "asc" }
+    });
+    if (existing) {
+        // include setting to make the returned shape compatible with callers that request `include: { setting: true }`
+        return exports.prisma.shop.findUnique({ where: { id: existing.id }, include: { setting: true } });
+    }
+    const placeholderId = `manual-${userId.slice(0, 8)}-${Date.now().toString(36)}`;
+    // create the shop and return it with the `setting` relation included (will be null initially)
+    return exports.prisma.shop.create({
+        data: {
+            ownerId: userId,
+            name: fallbackName ?? "Primary Automation Shop",
+            shopeeShopId: placeholderId,
+            shopeeRegion: "AMAZON",
+            isActive: true
+        },
+        include: { setting: true }
+    });
+}
 const redisUrl = new URL(process.env.REDIS_URL ?? "redis://localhost:6379");
 const redisConnection = {
     host: redisUrl.hostname,
@@ -72,7 +95,7 @@ function asyncHandler(fn) {
 async function logAudit(userId, action, detail) {
     if (!userId)
         return;
-    await prisma.auditLog.create({
+    await exports.prisma.auditLog.create({
         data: { userId, action, detail }
     });
 }
@@ -84,6 +107,63 @@ const amazonScrapeLimiter = (0, express_rate_limit_1.default)({
     keyGenerator: (req) => req.userId ?? req.ip ?? "anon",
     handler: (_req, res) => res.status(429).json({ error: "Amazon scrape rate limit exceeded" })
 });
+const manualOrderInputSchema = zod_1.z.object({
+    shopId: zod_1.z.string().optional(),
+    productUrl: zod_1.z.string().url(),
+    asin: zod_1.z.string().regex(/^[A-Z0-9]{10}$/i, "Invalid ASIN").optional(),
+    quantity: zod_1.z.coerce.number().int().min(1).max(10).default(1),
+    notes: zod_1.z.string().max(500).optional(),
+    buyerName: zod_1.z.string().min(2).max(120),
+    phone: zod_1.z.string().min(5).max(20),
+    addressLine1: zod_1.z.string().min(3).max(200),
+    addressLine2: zod_1.z.string().max(200).optional(),
+    city: zod_1.z.string().min(2).max(120),
+    state: zod_1.z.string().max(120).optional(),
+    postalCode: zod_1.z.string().min(3).max(20),
+    country: zod_1.z.string().min(2).max(60).optional(),
+    shippingAddressLabel: zod_1.z.string().min(2).max(80).optional(),
+    purchasePrice: zod_1.z.coerce.number().positive().max(1000000).optional(),
+    shippingProfileId: zod_1.z.string().optional()
+});
+const manualOrderListSchema = zod_1.z.object({
+    status: zod_1.z.nativeEnum(client_1.ManualOrderStatus).optional(),
+    shopId: zod_1.z.string().optional(),
+    cursor: zod_1.z.string().optional(),
+    limit: zod_1.z.coerce.number().int().min(1).max(50).optional()
+});
+const manualOrderCancelSchema = zod_1.z.object({
+    reason: zod_1.z.string().max(200).optional()
+});
+const shippingProfileInputSchema = zod_1.z.object({
+    shopId: zod_1.z.string(),
+    label: zod_1.z.string().min(2).max(80),
+    contactName: zod_1.z.string().min(2).max(120),
+    phone: zod_1.z.string().min(5).max(20),
+    addressLine1: zod_1.z.string().min(3).max(200),
+    addressLine2: zod_1.z.string().max(200).optional(),
+    city: zod_1.z.string().min(2).max(120),
+    state: zod_1.z.string().max(120).optional(),
+    postalCode: zod_1.z.string().min(3).max(20),
+    country: zod_1.z.string().min(2).max(60).default("JP"),
+    amazonAddressLabel: zod_1.z.string().min(2).max(80),
+    instructions: zod_1.z.string().max(500).optional(),
+    isDefault: zod_1.z.boolean().optional(),
+    isActive: zod_1.z.boolean().optional()
+});
+const extractAsinFromUrl = (input) => {
+    try {
+        const asinMatch = input.match(/(?:dp|gp\/product|product)\/([A-Z0-9]{10})/i);
+        if (asinMatch?.[1]) {
+            return asinMatch[1].toUpperCase();
+        }
+        const url = new URL(input);
+        const asin = url.searchParams.get("asin");
+        return asin ? asin.toUpperCase() : null;
+    }
+    catch (_err) {
+        return null;
+    }
+};
 function authMiddleware(req, res, next) {
     const header = req.headers.authorization;
     if (!header) {
@@ -102,7 +182,7 @@ function authMiddleware(req, res, next) {
 function requireRole(allowed) {
     const roles = Array.isArray(allowed) ? allowed : [allowed];
     return asyncHandler(async (req, res, next) => {
-        const user = await prisma.user.findUnique({ where: { id: req.userId } });
+        const user = await exports.prisma.user.findUnique({ where: { id: req.userId } });
         if (!user || !roles.includes(user.role)) {
             return res.status(403).json({ error: "Forbidden" });
         }
@@ -114,10 +194,10 @@ async function ensureSuperAdmin() {
     const password = process.env.SUPERADMIN_PASSWORD;
     if (!email || !password)
         return;
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const existing = await exports.prisma.user.findUnique({ where: { email } });
     if (!existing) {
         const hashed = await bcrypt_1.default.hash(password, 10);
-        await prisma.user.create({
+        await exports.prisma.user.create({
             data: { email, passwordHash: hashed, role: client_1.UserRole.ADMIN, isActive: true }
         });
         console.log("Superadmin bootstrapped");
@@ -146,7 +226,7 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
         return res.status(400).json({ error: "Invalid payload" });
     }
     const { email, password } = parse.data;
-    const user = await prisma.user.findUnique({ where: { email } });
+    const user = await exports.prisma.user.findUnique({ where: { email } });
     if (!user)
         return res.status(401).json({ error: "Invalid credentials" });
     const ok = await bcrypt_1.default.compare(password, user.passwordHash);
@@ -156,18 +236,26 @@ app.post("/auth/login", asyncHandler(async (req, res) => {
     res.json({ token });
 }));
 app.get("/shops", authMiddleware, asyncHandler(async (req, res) => {
-    const shops = await prisma.shop.findMany({
+    let shops = await exports.prisma.shop.findMany({
         where: { ownerId: req.userId },
         orderBy: { name: "asc" }
     });
+    if ((!shops || shops.length === 0) && req.userId) {
+        const fallback = await ensurePrimaryShop(req.userId);
+        shops = [fallback];
+    }
     res.json(shops);
 }));
 app.get("/settings", authMiddleware, asyncHandler(async (req, res) => {
-    const shop = await prisma.shop.findFirst({
+    let shop = await exports.prisma.shop.findFirst({
         where: { ownerId: req.userId, isActive: true },
         include: { setting: true },
         orderBy: { createdAt: 'asc' }
     });
+    if (!shop && req.userId) {
+        shop = await ensurePrimaryShop(req.userId);
+        shop = await exports.prisma.shop.findFirst({ where: { id: shop.id }, include: { setting: true } }) ?? shop;
+    }
     if (!shop || !shop.setting) {
         return res.json({
             includeAmazonPoints: false,
@@ -175,10 +263,12 @@ app.get("/settings", authMiddleware, asyncHandler(async (req, res) => {
             domesticShippingCost: 0,
             maxShippingDays: 7,
             minExpectedProfit: 0,
-            shopIds: [],
+            shopIds: shop ? [shop.id] : [],
             isActive: false,
             isDryRun: true,
-            reviewBandPercent: 0
+            reviewBandPercent: 0,
+            defaultShippingAddressLabel: null,
+            defaultShippingProfileId: null
         });
     }
     res.json({
@@ -190,12 +280,14 @@ app.get("/settings", authMiddleware, asyncHandler(async (req, res) => {
         shopIds: [shop.id],
         isActive: shop.setting.isActive,
         isDryRun: shop.setting.isDryRun,
-        reviewBandPercent: Number(shop.setting.reviewBandPercent || 0)
+        reviewBandPercent: Number(shop.setting.reviewBandPercent || 0),
+        defaultShippingAddressLabel: shop.setting.defaultShippingAddressLabel ?? null,
+        defaultShippingProfileId: shop.setting.defaultShippingProfileId ?? null
     });
 }));
 app.post("/settings", authMiddleware, asyncHandler(async (req, res) => {
     const schema = zod_1.z.object({
-        shopId: zod_1.z.string(),
+        shopId: zod_1.z.string().optional(),
         isActive: zod_1.z.boolean(),
         isDryRun: zod_1.z.boolean().default(false),
         autoFulfillmentMode: zod_1.z.nativeEnum(client_1.AutoFulfillmentMode),
@@ -205,17 +297,62 @@ app.post("/settings", authMiddleware, asyncHandler(async (req, res) => {
         includePoints: zod_1.z.boolean(),
         includeDomesticShipping: zod_1.z.boolean(),
         defaultShippingAddressLabel: zod_1.z.string().optional(),
+        defaultShippingProfileId: zod_1.z.string().nullable().optional(),
         currency: zod_1.z.string().default("JPY")
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
     const data = parsed.data;
-    const shop = await prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
+    let shop;
+    if (data.shopId) {
+        shop = await exports.prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
+        if (!shop)
+            return res.status(404).json({ error: "Shop not found" });
+    }
+    else if (req.userId) {
+        shop = await ensurePrimaryShop(req.userId);
+    }
     if (!shop)
-        return res.status(404).json({ error: "Shop not found" });
-    await prisma.autoShippingSetting.upsert({
-        where: { shopId: data.shopId },
+        return res.status(404).json({ error: "Unable to resolve shop" });
+    const targetShopId = shop.id;
+    const existingSetting = await exports.prisma.autoShippingSetting.findUnique({ where: { shopId: targetShopId } });
+    const profileFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingProfileId");
+    const labelFieldProvided = Object.prototype.hasOwnProperty.call(data, "defaultShippingAddressLabel");
+    let desiredProfileId = profileFieldProvided
+        ? data.defaultShippingProfileId ?? null
+        : existingSetting?.defaultShippingProfileId ?? null;
+    let targetShippingProfile = null;
+    if (desiredProfileId) {
+        const profile = await exports.prisma.shippingProfile.findFirst({
+            where: { id: desiredProfileId, shopId: targetShopId, shop: { ownerId: req.userId } }
+        });
+        if (!profile) {
+            return res.status(404).json({ error: "Shipping profile not found for this shop" });
+        }
+        targetShippingProfile = { id: profile.id, amazonAddressLabel: profile.amazonAddressLabel };
+        await exports.prisma.shippingProfile.updateMany({
+            where: { shopId: targetShopId, NOT: { id: profile.id } },
+            data: { isDefault: false }
+        });
+        await exports.prisma.shippingProfile.update({
+            where: { id: profile.id },
+            data: { isDefault: true }
+        });
+    }
+    else if (profileFieldProvided) {
+        await exports.prisma.shippingProfile.updateMany({
+            where: { shopId: targetShopId },
+            data: { isDefault: false }
+        });
+    }
+    const sanitizedManualLabel = data.defaultShippingAddressLabel?.trim();
+    const defaultShippingAddressLabel = targetShippingProfile?.amazonAddressLabel ??
+        (labelFieldProvided ? sanitizedManualLabel || null : (existingSetting?.defaultShippingAddressLabel ?? null));
+    const defaultShippingProfileId = targetShippingProfile?.id ??
+        (profileFieldProvided ? null : (existingSetting?.defaultShippingProfileId ?? null));
+    await exports.prisma.autoShippingSetting.upsert({
+        where: { shopId: targetShopId },
         update: {
             isActive: data.isActive,
             isDryRun: data.isDryRun,
@@ -225,11 +362,12 @@ app.post("/settings", authMiddleware, asyncHandler(async (req, res) => {
             reviewBandPercent: data.reviewBandPercent ?? null,
             includePoints: data.includePoints,
             includeDomesticShipping: data.includeDomesticShipping,
-            defaultShippingAddressLabel: data.defaultShippingAddressLabel ?? null,
+            defaultShippingAddressLabel,
+            defaultShippingProfileId,
             currency: data.currency
         },
         create: {
-            shopId: data.shopId,
+            shopId: targetShopId,
             isActive: data.isActive,
             isDryRun: data.isDryRun,
             autoFulfillmentMode: data.autoFulfillmentMode,
@@ -238,53 +376,76 @@ app.post("/settings", authMiddleware, asyncHandler(async (req, res) => {
             reviewBandPercent: data.reviewBandPercent ?? null,
             includePoints: data.includePoints,
             includeDomesticShipping: data.includeDomesticShipping,
-            defaultShippingAddressLabel: data.defaultShippingAddressLabel ?? null,
+            defaultShippingAddressLabel,
+            defaultShippingProfileId,
             currency: data.currency
         }
     });
     if (data.isActive) {
-        await orderQueue.add("toggle-auto-shipping", { shopId: data.shopId, active: true });
+        await orderQueue.add("toggle-auto-shipping", { shopId: targetShopId, active: true });
     }
     else {
-        await orderQueue.add("toggle-auto-shipping", { shopId: data.shopId, active: false });
+        await orderQueue.add("toggle-auto-shipping", { shopId: targetShopId, active: false });
     }
-    await logAudit(req.userId, "update-settings", data);
-    res.json({ ok: true });
+    await logAudit(req.userId, "update-settings", { ...data, shopId: targetShopId });
+    res.json({ ok: true, shopId: targetShopId });
 }));
 app.post("/credentials/amazon", authMiddleware, asyncHandler(async (req, res) => {
     if (!AES_KEY) {
         return res.status(500).json({ error: "Missing AES secret key" });
     }
     const schema = zod_1.z.object({
-        shopId: zod_1.z.string(),
+        shopId: zod_1.z.string().optional(),
         email: zod_1.z.string().email(),
         password: zod_1.z.string().min(6)
     });
     const parsed = schema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
-    const shop = await prisma.shop.findFirst({ where: { id: parsed.data.shopId, ownerId: req.userId } });
-    if (!shop)
+    let targetShopId = parsed.data.shopId;
+    let shop = targetShopId
+        ? await exports.prisma.shop.findFirst({ where: { id: targetShopId, ownerId: req.userId } })
+        : null;
+    if (!shop && req.userId) {
+        shop = await ensurePrimaryShop(req.userId);
+        targetShopId = shop.id;
+    }
+    if (!shop || !targetShopId)
         return res.status(404).json({ error: "Shop not found" });
     const { ciphertext, iv } = (0, secret_1.encryptSecret)(parsed.data.password, AES_KEY);
-    await prisma.amazonCredential.upsert({
-        where: { shopId: parsed.data.shopId },
+    await exports.prisma.amazonCredential.upsert({
+        where: { shopId: targetShopId },
         update: { username: parsed.data.email, passwordEncrypted: ciphertext, encryptionIv: iv, updatedByUserId: req.userId },
         create: {
-            shopId: parsed.data.shopId,
+            shopId: targetShopId,
             username: parsed.data.email,
             passwordEncrypted: ciphertext,
             encryptionIv: iv,
             updatedByUserId: req.userId
         }
     });
-    await logAudit(req.userId, "update-amazon-credentials", { email: parsed.data.email });
-    res.json({ ok: true });
+    await logAudit(req.userId, "update-amazon-credentials", { email: parsed.data.email, shopId: targetShopId });
+    res.json({ ok: true, shopId: targetShopId });
 }));
 app.get("/credentials/amazon", authMiddleware, asyncHandler(async (req, res) => {
-    const shopIds = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true } });
-    const creds = await prisma.amazonCredential.findMany({ where: { shopId: { in: shopIds.map((s) => s.id) } } });
-    res.json(creds.map((c) => ({ shopId: c.shopId, email: c.username, hasPassword: Boolean(c.passwordEncrypted) })));
+    let shops = await exports.prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true, name: true } });
+    if ((!shops || shops.length === 0) && req.userId) {
+        const fallback = await ensurePrimaryShop(req.userId);
+        shops = [{ id: fallback.id, name: fallback.name ?? "Primary Automation Shop" }];
+    }
+    if (!shops || shops.length === 0)
+        return res.json([]);
+    const creds = await exports.prisma.amazonCredential.findMany({ where: { shopId: { in: shops.map((s) => s.id) } } });
+    const payload = shops.map((shop) => {
+        const cred = creds.find((c) => c.shopId === shop.id);
+        return {
+            shopId: shop.id,
+            shopName: shop.name ?? shop.id,
+            email: cred?.username ?? "",
+            hasPassword: Boolean(cred?.passwordEncrypted)
+        };
+    });
+    res.json(payload);
 }));
 app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) => {
     if (!AES_KEY)
@@ -302,9 +463,9 @@ app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) =>
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
     const { partnerId, partnerKey, accessToken, baseUrl, shopId, shopName, shopeeRegion } = parsed.data;
-    const existingShop = await prisma.shop.findFirst({ where: { shopeeShopId: shopId, ownerId: req.userId } });
+    const existingShop = await exports.prisma.shop.findFirst({ where: { shopeeShopId: shopId, ownerId: req.userId } });
     const shop = existingShop
-        ? await prisma.shop.update({
+        ? await exports.prisma.shop.update({
             where: { id: existingShop.id },
             data: {
                 name: shopName ?? existingShop.name,
@@ -312,7 +473,7 @@ app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) =>
                 isActive: true
             }
         })
-        : await prisma.shop.create({
+        : await exports.prisma.shop.create({
             data: {
                 ownerId: req.userId,
                 shopeeShopId: shopId,
@@ -323,7 +484,7 @@ app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) =>
         });
     const partnerEnc = (0, secret_1.encryptSecret)(partnerKey, AES_KEY);
     const tokenEnc = (0, secret_1.encryptSecret)(accessToken, AES_KEY);
-    await prisma.shopeeCredential.upsert({
+    await exports.prisma.shopeeCredential.upsert({
         where: { shopId: shop.id },
         update: {
             partnerId,
@@ -349,11 +510,11 @@ app.post("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) =>
     res.json({ ok: true });
 }));
 app.get("/credentials/shopee", authMiddleware, asyncHandler(async (req, res) => {
-    const shops = await prisma.shop.findMany({ where: { ownerId: req.userId } });
+    const shops = await exports.prisma.shop.findMany({ where: { ownerId: req.userId } });
     res.json(shops.map((s) => ({ shopId: s.id, shopeeShopId: s.shopeeShopId, name: s.name, region: s.shopeeRegion })));
 }));
 app.get("/orders/errors/export", authMiddleware, asyncHandler(async (req, res) => {
-    const errors = await prisma.errorItem.findMany({
+    const errors = await exports.prisma.errorItem.findMany({
         where: {
             shop: { ownerId: req.userId }
         },
@@ -378,7 +539,7 @@ app.get("/orders/errors/export", authMiddleware, asyncHandler(async (req, res) =
     res.send(csv);
 }));
 app.get("/orders/processed/export", authMiddleware, asyncHandler(async (req, res) => {
-    const orders = await prisma.amazonOrder.findMany({
+    const orders = await exports.prisma.amazonOrder.findMany({
         where: { shopeeOrder: { shop: { ownerId: req.userId } } },
         orderBy: { createdAt: "desc" },
         take: 200,
@@ -404,8 +565,8 @@ app.get("/orders/processed/export", authMiddleware, asyncHandler(async (req, res
 }));
 // Product mappings via AutoShippingShopSelection
 app.get("/mappings", authMiddleware, asyncHandler(async (req, res) => {
-    const shops = await prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true, name: true } });
-    const selections = await prisma.autoShippingShopSelection.findMany({
+    const shops = await exports.prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true, name: true } });
+    const selections = await exports.prisma.autoShippingShopSelection.findMany({
         where: { shopId: { in: shops.map((s) => s.id) }, isActive: true },
         orderBy: [{ shopId: "asc" }, { shopeeItemId: "asc" }]
     });
@@ -421,10 +582,10 @@ app.post("/mappings", authMiddleware, asyncHandler(async (req, res) => {
     const parsed = schema.safeParse(req.body);
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
-    const shop = await prisma.shop.findFirst({ where: { id: parsed.data.shopId, ownerId: req.userId } });
+    const shop = await exports.prisma.shop.findFirst({ where: { id: parsed.data.shopId, ownerId: req.userId } });
     if (!shop)
         return res.status(404).json({ error: "Shop not found" });
-    const selection = await prisma.autoShippingShopSelection.upsert({
+    const selection = await exports.prisma.autoShippingShopSelection.upsert({
         where: { shopId_shopeeItemId: { shopId: parsed.data.shopId, shopeeItemId: parsed.data.shopeeItemId } },
         update: { amazonProductUrl: parsed.data.amazonProductUrl, notes: parsed.data.notes, isActive: true },
         create: { ...parsed.data, isActive: true }
@@ -444,10 +605,10 @@ app.post("/mappings/import", authMiddleware, asyncHandler(async (req, res) => {
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
     for (const row of parsed.data.rows) {
-        const shop = await prisma.shop.findFirst({ where: { id: row.shopId, ownerId: req.userId } });
+        const shop = await exports.prisma.shop.findFirst({ where: { id: row.shopId, ownerId: req.userId } });
         if (!shop)
             continue;
-        await prisma.autoShippingShopSelection.upsert({
+        await exports.prisma.autoShippingShopSelection.upsert({
             where: { shopId_shopeeItemId: { shopId: row.shopId, shopeeItemId: row.shopeeItemId } },
             update: { amazonProductUrl: row.amazonProductUrl, notes: row.notes, isActive: true },
             create: { ...row, isActive: true }
@@ -455,8 +616,91 @@ app.post("/mappings/import", authMiddleware, asyncHandler(async (req, res) => {
     }
     res.json({ ok: true });
 }));
+// Shipping profile management
+app.get("/shipping-profiles", authMiddleware, asyncHandler(async (req, res) => {
+    const shops = await exports.prisma.shop.findMany({ where: { ownerId: req.userId }, select: { id: true } });
+    if (!shops || shops.length === 0)
+        return res.json([]);
+    const profiles = await exports.prisma.shippingProfile.findMany({ where: { shopId: { in: shops.map((s) => s.id) }, isActive: true }, orderBy: { label: "asc" } });
+    res.json(profiles);
+}));
+app.post("/shipping-profiles", authMiddleware, asyncHandler(async (req, res) => {
+    const parsed = shippingProfileInputSchema.safeParse(req.body);
+    if (!parsed.success)
+        return res.status(400).json({ error: "Invalid payload" });
+    const data = parsed.data;
+    const shop = await exports.prisma.shop.findFirst({ where: { id: data.shopId, ownerId: req.userId } });
+    if (!shop)
+        return res.status(404).json({ error: "Shop not found" });
+    const created = await exports.prisma.shippingProfile.create({
+        data: {
+            shopId: shop.id,
+            label: data.label,
+            contactName: data.contactName,
+            phone: data.phone,
+            addressLine1: data.addressLine1,
+            addressLine2: data.addressLine2 ?? null,
+            city: data.city,
+            state: data.state ?? null,
+            postalCode: data.postalCode,
+            country: data.country ?? "JP",
+            instructions: data.instructions ?? null,
+            amazonAddressLabel: data.amazonAddressLabel,
+            isDefault: data.isDefault ?? false,
+            isActive: data.isActive ?? true
+        }
+    });
+    if (data.isDefault) {
+        await exports.prisma.shippingProfile.updateMany({ where: { shopId: shop.id, NOT: { id: created.id } }, data: { isDefault: false } });
+        await exports.prisma.autoShippingSetting.updateMany({ where: { shopId: shop.id }, data: { defaultShippingProfileId: created.id, defaultShippingAddressLabel: created.amazonAddressLabel } });
+    }
+    res.status(201).json(created);
+}));
+app.put("/shipping-profiles/:id", authMiddleware, asyncHandler(async (req, res) => {
+    const parsed = shippingProfileInputSchema.safeParse(req.body);
+    if (!parsed.success)
+        return res.status(400).json({ error: "Invalid payload" });
+    const profile = await exports.prisma.shippingProfile.findUnique({ where: { id: req.params.id } });
+    if (!profile)
+        return res.status(404).json({ error: "Profile not found" });
+    const shop = await exports.prisma.shop.findFirst({ where: { id: profile.shopId, ownerId: req.userId } });
+    if (!shop)
+        return res.status(404).json({ error: "Shop not found or not owned" });
+    const data = parsed.data;
+    const updated = await exports.prisma.shippingProfile.update({ where: { id: profile.id }, data: {
+            label: data.label,
+            contactName: data.contactName,
+            phone: data.phone,
+            addressLine1: data.addressLine1,
+            addressLine2: data.addressLine2 ?? null,
+            city: data.city,
+            state: data.state ?? null,
+            postalCode: data.postalCode,
+            country: data.country ?? "JP",
+            instructions: data.instructions ?? null,
+            amazonAddressLabel: data.amazonAddressLabel,
+            isDefault: data.isDefault ?? false,
+            isActive: data.isActive ?? true
+        } });
+    if (data.isDefault) {
+        await exports.prisma.shippingProfile.updateMany({ where: { shopId: profile.shopId, NOT: { id: profile.id } }, data: { isDefault: false } });
+        await exports.prisma.autoShippingSetting.updateMany({ where: { shopId: profile.shopId }, data: { defaultShippingProfileId: profile.id, defaultShippingAddressLabel: data.amazonAddressLabel } });
+    }
+    res.json(updated);
+}));
+app.delete("/shipping-profiles/:id", authMiddleware, asyncHandler(async (req, res) => {
+    const profile = await exports.prisma.shippingProfile.findUnique({ where: { id: req.params.id } });
+    if (!profile)
+        return res.status(404).json({ error: "Profile not found" });
+    const shop = await exports.prisma.shop.findFirst({ where: { id: profile.shopId, ownerId: req.userId } });
+    if (!shop)
+        return res.status(404).json({ error: "Shop not found or not owned" });
+    await exports.prisma.shippingProfile.delete({ where: { id: profile.id } });
+    await exports.prisma.autoShippingSetting.updateMany({ where: { shopId: profile.shopId, defaultShippingProfileId: profile.id }, data: { defaultShippingProfileId: null } });
+    res.json({ ok: true });
+}));
 app.get("/orders/errors", authMiddleware, asyncHandler(async (req, res) => {
-    const errors = await prisma.errorItem.findMany({
+    const errors = await exports.prisma.errorItem.findMany({
         where: { shop: { ownerId: req.userId } },
         orderBy: { createdAt: "desc" },
         take: 50
@@ -465,14 +709,14 @@ app.get("/orders/errors", authMiddleware, asyncHandler(async (req, res) => {
 }));
 app.post("/orders/retry/:id", authMiddleware, asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const order = await prisma.shopeeOrder.findUnique({
+    const order = await exports.prisma.shopeeOrder.findUnique({
         where: { id },
         include: { shop: true }
     });
     if (!order || order.shop.ownerId !== req.userId) {
         return res.status(404).json({ error: "Order not found" });
     }
-    await prisma.shopeeOrder.update({
+    await exports.prisma.shopeeOrder.update({
         where: { id },
         data: { processingStatus: client_1.ProcessingStatus.QUEUED, processingMode: client_1.ProcessingMode.MANUAL }
     });
@@ -481,7 +725,7 @@ app.post("/orders/retry/:id", authMiddleware, asyncHandler(async (req, res) => {
 }));
 app.post("/orders/manual/:id", authMiddleware, asyncHandler(async (req, res) => {
     const { id } = req.params;
-    const order = await prisma.shopeeOrder.findUnique({ where: { id }, include: { shop: true } });
+    const order = await exports.prisma.shopeeOrder.findUnique({ where: { id }, include: { shop: true } });
     if (!order || order.shop.ownerId !== req.userId) {
         return res.status(404).json({ error: "Order not found" });
     }
@@ -489,13 +733,13 @@ app.post("/orders/manual/:id", authMiddleware, asyncHandler(async (req, res) => 
     const productUrl = order.rawPayload && typeof order.rawPayload === "object" && "productUrl" in order.rawPayload
         ? order.rawPayload.productUrl ?? ""
         : "";
-    await prisma.shopeeOrder.update({
+    await exports.prisma.shopeeOrder.update({
         where: { id },
         data: { processingStatus: client_1.ProcessingStatus.MANUAL_REVIEW, processingMode: client_1.ProcessingMode.MANUAL, lastProcessingErrorCode: null, lastProcessingErrorMessage: null }
     });
-    const existing = await prisma.amazonOrder.findUnique({ where: { shopeeOrderId: id } });
+    const existing = await exports.prisma.amazonOrder.findUnique({ where: { shopeeOrderId: id } });
     if (!existing) {
-        await prisma.amazonOrder.create({
+        await exports.prisma.amazonOrder.create({
             data: {
                 shopeeOrderId: id,
                 amazonOrderId: null,
@@ -512,7 +756,7 @@ app.post("/orders/manual/:id", authMiddleware, asyncHandler(async (req, res) => 
     }
     else {
         const existingPayload = existing.rawPayload && typeof existing.rawPayload === "object" ? existing.rawPayload : {};
-        await prisma.amazonOrder.update({
+        await exports.prisma.amazonOrder.update({
             where: { shopeeOrderId: id },
             data: {
                 status: client_1.AmazonOrderStatus.PLACED,
@@ -521,6 +765,113 @@ app.post("/orders/manual/:id", authMiddleware, asyncHandler(async (req, res) => 
         });
     }
     res.json({ ok: true });
+}));
+app.get("/manual-orders", authMiddleware, asyncHandler(async (req, res) => {
+    if (!req.userId)
+        return res.status(401).json({ error: "Unauthorized" });
+    const query = manualOrderListSchema.safeParse(req.query);
+    if (!query.success) {
+        return res.status(400).json({ error: "Invalid filters" });
+    }
+    const take = query.data.limit ?? 25;
+    const where = {
+        ownerId: req.userId,
+        ...(query.data.status ? { status: query.data.status } : {}),
+        ...(query.data.shopId ? { shopId: query.data.shopId } : {})
+    };
+    const orders = await exports.prisma.manualAmazonOrder.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        include: { shop: { select: { id: true, name: true } } },
+        take: take + 1,
+        cursor: query.data.cursor ? { id: query.data.cursor } : undefined,
+        skip: query.data.cursor ? 1 : undefined
+    });
+    const hasNext = orders.length > take;
+    const items = hasNext ? orders.slice(0, take) : orders;
+    const nextCursor = hasNext ? orders[orders.length - 1].id : null;
+    res.json({ orders: items, nextCursor });
+}));
+app.post("/manual-orders", authMiddleware, asyncHandler(async (req, res) => {
+    if (!req.userId)
+        return res.status(401).json({ error: "Unauthorized" });
+    const parsed = manualOrderInputSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid payload" });
+    }
+    let targetShopId = parsed.data.shopId;
+    let shop = targetShopId
+        ? await exports.prisma.shop.findFirst({ where: { id: targetShopId, ownerId: req.userId } })
+        : null;
+    if (!shop && req.userId) {
+        shop = await ensurePrimaryShop(req.userId, "Manual Amazon Orders");
+        targetShopId = shop.id;
+    }
+    if (!shop || !targetShopId) {
+        return res.status(404).json({ error: "Shop not found" });
+    }
+    const asin = parsed.data.asin?.toUpperCase() ?? extractAsinFromUrl(parsed.data.productUrl);
+    const purchasePriceDecimal = parsed.data.purchasePrice !== undefined
+        ? new client_1.Prisma.Decimal(parsed.data.purchasePrice.toString())
+        : null;
+    const created = await exports.prisma.manualAmazonOrder.create({
+        data: {
+            shopId: targetShopId,
+            ownerId: req.userId,
+            productUrl: parsed.data.productUrl,
+            asin,
+            quantity: parsed.data.quantity,
+            notes: parsed.data.notes?.trim() || undefined,
+            buyerName: parsed.data.buyerName,
+            phone: parsed.data.phone,
+            addressLine1: parsed.data.addressLine1,
+            addressLine2: parsed.data.addressLine2?.trim() || undefined,
+            city: parsed.data.city,
+            state: parsed.data.state?.trim() || undefined,
+            postalCode: parsed.data.postalCode,
+            country: (parsed.data.country ?? "JP").toUpperCase(),
+            shippingAddressLabel: parsed.data.shippingAddressLabel?.trim() || parsed.data.buyerName,
+            shippingProfileId: parsed.data.shippingProfileId || undefined,
+            purchasePrice: purchasePriceDecimal
+        },
+        include: { shop: { select: { id: true, name: true } } }
+    });
+    await logAudit(req.userId, "manual-order-create", { manualOrderId: created.id, shopId: targetShopId, asin });
+    await orderQueue.add("process-manual-order", { manualOrderId: created.id, shopId: targetShopId }, {
+        removeOnComplete: 500,
+        removeOnFail: 500
+    });
+    res.status(201).json(created);
+}));
+app.post("/manual-orders/:id/cancel", authMiddleware, asyncHandler(async (req, res) => {
+    if (!req.userId)
+        return res.status(401).json({ error: "Unauthorized" });
+    const parsed = manualOrderCancelSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid payload" });
+    }
+    const order = await exports.prisma.manualAmazonOrder.findUnique({
+        where: { id: req.params.id },
+        include: { shop: { select: { id: true, name: true } } }
+    });
+    if (!order || order.ownerId !== req.userId) {
+        return res.status(404).json({ error: "Manual order not found" });
+    }
+    if (order.status !== client_1.ManualOrderStatus.PENDING && order.status !== client_1.ManualOrderStatus.PROCESSING) {
+        return res.status(400).json({ error: "Order can no longer be cancelled" });
+    }
+    const reason = parsed.data.reason?.trim() || "Cancelled by user";
+    const updated = await exports.prisma.manualAmazonOrder.update({
+        where: { id: order.id },
+        data: {
+            status: client_1.ManualOrderStatus.CANCELLED,
+            failureCode: "USER_CANCELLED",
+            failureReason: reason
+        },
+        include: { shop: { select: { id: true, name: true } } }
+    });
+    await logAudit(req.userId, "manual-order-cancel", { manualOrderId: order.id });
+    res.json(updated);
 }));
 app.post("/auth/signup", asyncHandler(async (req, res) => {
     const schema = zod_1.z.object({
@@ -532,7 +883,7 @@ app.post("/auth/signup", asyncHandler(async (req, res) => {
         return res.status(400).json({ error: "Invalid payload" });
     const { email, password } = parsed.data;
     const hashed = await bcrypt_1.default.hash(password, 10);
-    const user = await prisma.user.create({
+    const user = await exports.prisma.user.create({
         data: { email, passwordHash: hashed, role: client_1.UserRole.OPERATOR }
     });
     const token = jsonwebtoken_1.default.sign({ userId: user.id }, JWT_SECRET, { expiresIn: "12h" });
@@ -596,17 +947,17 @@ app.post("/profit/preview", authMiddleware, asyncHandler(async (req, res) => {
 }));
 // Admin: list users
 app.get("/admin/users", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (_req, res) => {
-    const users = await prisma.user.findMany({
+    const users = await exports.prisma.user.findMany({
         select: { id: true, email: true, role: true, isActive: true, createdAt: true }
     });
     res.json(users);
 }));
 // Admin: toggle user active
 app.post("/admin/users/:id/toggle", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (req, res) => {
-    const current = await prisma.user.findUnique({ where: { id: req.params.id } });
+    const current = await exports.prisma.user.findUnique({ where: { id: req.params.id } });
     if (!current)
         return res.status(404).json({ error: "Not found" });
-    const updated = await prisma.user.update({
+    const updated = await exports.prisma.user.update({
         where: { id: req.params.id },
         data: { isActive: !current.isActive }
     });
@@ -620,7 +971,7 @@ app.post("/admin/users/:id/reset-password", authMiddleware, requireRole([client_
     if (!parsed.success)
         return res.status(400).json({ error: "Invalid payload" });
     const hashed = await bcrypt_1.default.hash(parsed.data.password, 10);
-    await prisma.user.update({ where: { id: req.params.id }, data: { passwordHash: hashed } });
+    await exports.prisma.user.update({ where: { id: req.params.id }, data: { passwordHash: hashed } });
     await logAudit(req.userId, "reset-password", { target: req.params.id });
     res.json({ ok: true });
 }));
@@ -640,7 +991,7 @@ app.get("/health", (_req, res) => {
 });
 // List recent orders with decisions
 app.get("/orders/recent", authMiddleware, asyncHandler(async (req, res) => {
-    const orders = await prisma.shopeeOrder.findMany({
+    const orders = await exports.prisma.shopeeOrder.findMany({
         where: { shop: { ownerId: req.userId } },
         orderBy: { createdAt: "desc" },
         take: 50,
@@ -650,7 +1001,7 @@ app.get("/orders/recent", authMiddleware, asyncHandler(async (req, res) => {
 }));
 // Single order detail
 app.get("/orders/:id", authMiddleware, asyncHandler(async (req, res) => {
-    const order = await prisma.shopeeOrder.findUnique({
+    const order = await exports.prisma.shopeeOrder.findUnique({
         where: { id: req.params.id },
         include: { amazonOrder: true, errorItems: true, shop: true }
     });
@@ -712,17 +1063,17 @@ app.post("/ops/amazon-scrape", authMiddleware, amazonScrapeLimiter, asyncHandler
 app.post("/ops/amazon-test", authMiddleware, amazonScrapeLimiter, asyncHandler(handleAmazonScrape));
 // Connector/status summary
 app.get("/ops/status", authMiddleware, asyncHandler(async (req, res) => {
-    const lastOrder = await prisma.shopeeOrder.findFirst({
+    const lastOrder = await exports.prisma.shopeeOrder.findFirst({
         where: { shop: { ownerId: req.userId } },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true }
     });
-    const lastAmazon = await prisma.amazonOrder.findFirst({
+    const lastAmazon = await exports.prisma.amazonOrder.findFirst({
         where: { shopeeOrder: { shop: { ownerId: req.userId } } },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true, status: true }
     });
-    const lastError = await prisma.errorItem.findFirst({
+    const lastError = await exports.prisma.errorItem.findFirst({
         where: { shop: { ownerId: req.userId } },
         orderBy: { createdAt: "desc" },
         select: { createdAt: true, reason: true }
@@ -735,7 +1086,7 @@ app.get("/ops/status", authMiddleware, asyncHandler(async (req, res) => {
 }));
 // Audit log listing
 app.get("/admin/audit", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (_req, res) => {
-    const logs = await prisma.auditLog.findMany({
+    const logs = await exports.prisma.auditLog.findMany({
         orderBy: { createdAt: "desc" },
         take: 200,
         include: { user: { select: { email: true } } }
@@ -745,9 +1096,9 @@ app.get("/admin/audit", authMiddleware, requireRole([client_1.UserRole.ADMIN]), 
 // Prometheus-style metrics (minimal)
 app.get("/ops/metrics", authMiddleware, requireRole([client_1.UserRole.ADMIN]), asyncHandler(async (_req, res) => {
     const [orders, amazonOrders, errors] = await Promise.all([
-        prisma.shopeeOrder.count(),
-        prisma.amazonOrder.count(),
-        prisma.errorItem.count()
+        exports.prisma.shopeeOrder.count(),
+        exports.prisma.amazonOrder.count(),
+        exports.prisma.errorItem.count()
     ]);
     const metrics = [
         `app_orders_total ${orders}`,

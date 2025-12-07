@@ -128,7 +128,7 @@ model AutoShippingSetting {
   includeDomesticShipping     Boolean             @default(false)
   defaultShippingAddressLabel String?
   defaultShippingProfile      ShippingProfile?    @relation("DefaultShippingProfile", fields: [defaultShippingProfileId], references: [id])
-  defaultShippingProfileId    String?
+  defaultShippingProfileId    String? @unique
   currency                    String              @default("JPY")
   lastShopeePolledAt          DateTime?
   createdAt                   DateTime            @default(now())
