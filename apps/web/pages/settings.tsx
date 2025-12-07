@@ -91,6 +91,12 @@ export default function SettingsPage() {
   );
 
   const { data: shops, mutate: refreshShops } = useSWR("/shops", fetcher, { shouldRetryOnError: false });
+  const { data: notificationChannels, mutate: refreshNotificationChannels } = useSWR(
+    () => (shopId ? `/api/notifications/channels/${shopId}` : null),
+    fetcher,
+    { shouldRetryOnError: false }
+  );
+
   useEffect(() => {
     if (!Array.isArray(notificationChannels) || alertWebhookUrl) return;
     const webhookChannel = notificationChannels.find((channel: any) => channel.type === "WEBHOOK");
@@ -101,11 +107,6 @@ export default function SettingsPage() {
 
   const { data: shopeeCredentials, mutate: refreshShopeeCredentials } = useSWR("/credentials/shopee", fetcher, { shouldRetryOnError: false });
   const { data: amazonCredentials, mutate: refreshAmazonCredentials } = useSWR("/credentials/amazon", fetcher, { shouldRetryOnError: false });
-  const { data: notificationChannels, mutate: refreshNotificationChannels } = useSWR(
-    () => (shopId ? `/api/notifications/channels/${shopId}` : null),
-    fetcher,
-    { shouldRetryOnError: false }
-  );
   const { data: shippingProfiles } = useSWR(() => (shopId ? `/shipping-profiles` : null), fetcher, { shouldRetryOnError: false });
   const { data: credentialHealth, error: credentialHealthError, mutate: refreshCredentialHealth } = useSWR<CredentialHealth[]>(
     "/ops/credential-health",
@@ -573,13 +574,19 @@ export default function SettingsPage() {
             />
           </div>
         </div>
-            if (typeof window !== "undefined") {
-              window.open("/SHOPEE_CREDENTIALS_GUIDE.md", "_blank");
-            }
-          }}
-        >
-          📘 {t("openDocs") || "Open credential docs"}
-        </Button>
+        <div>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.open("/SHOPEE_CREDENTIALS_GUIDE.md", "_blank");
+              }
+            }}
+          >
+            📘 {t("openDocs") || "Open credential docs"}
+          </Button>
+        </div>
       </div>
     </Card>
   );

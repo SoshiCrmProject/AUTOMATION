@@ -209,7 +209,7 @@ export default function MappingsPage() {
 
   const handleApplyTemplate = () => {
     if (!mappings.length) {
-      pushToast(t("csvTemplateUnavailable") || "Add a mapping to export it", "warning");
+      pushToast(t("csvTemplateUnavailable") || "Add a mapping to export it", "error");
       return;
     }
 
